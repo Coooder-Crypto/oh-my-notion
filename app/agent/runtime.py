@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import sqlite3
 
 from app.context.builder import build_context_bundle
@@ -34,12 +35,16 @@ def run_agent(
         )
         if not planned_calls:
             break
+        planned_calls = remove_duplicate_calls(planned_calls, observations)
+        if not planned_calls:
+            break
         observations.extend(execute_tool_calls(registry, planned_calls))
         if extract_network_content(observations):
             break
 
     search_results = extract_search_results(observations)
     memory_items = extract_memory_items(observations)
+    link_results = extract_link_results(observations)
     network_content = extract_network_content(observations)
     context_bundle = build_context_bundle(
         question=question,
@@ -71,6 +76,19 @@ def run_agent(
 
     if network_content:
         answer = render_network_response(question, observations, network_content)
+        persist_turns(connection, session_id, question, answer)
+        return answer
+
+    if link_results:
+        answer = render_link_search_response(question, observations, link_results)
+        persist_turns(connection, session_id, question, answer)
+        return answer
+
+    if has_empty_link_search(observations):
+        answer = (
+            "本地 Notion 索引里暂时没有找到匹配的已保存链接。\n"
+            "你可以换一个更具体的关键词，比如项目名、网站名、文档名，或者先检查相关页面是否已经被同步并产生了链接内容。"
+        )
         persist_turns(connection, session_id, question, answer)
         return answer
 
@@ -186,6 +204,20 @@ def extract_memory_items(observations: list[ToolObservation]) -> list[dict]:
     return []
 
 
+def extract_link_results(observations: list[ToolObservation]) -> list[dict]:
+    for observation in observations:
+        if observation.tool_name == "search_saved_links" and isinstance(observation.result, list):
+            return [item for item in observation.result if isinstance(item, dict)]
+    return []
+
+
+def has_empty_link_search(observations: list[ToolObservation]) -> bool:
+    for observation in observations:
+        if observation.tool_name == "search_saved_links" and observation.result == []:
+            return True
+    return False
+
+
 def render_memory_response(
     question: str,
     observations: list[ToolObservation],
@@ -197,6 +229,31 @@ def render_memory_response(
         lines.append(
             f"   source={item.get('source', '')} importance={item.get('importance', 1)} created_at={item.get('created_at', '')}"
         )
+    lines.append("")
+    lines.append("工具链路：")
+    for index, observation in enumerate(observations, start=1):
+        lines.append(f"{index}. {observation.tool_name} -> {summarize_result(observation.result)}")
+    return "\n".join(lines)
+
+
+def render_link_search_response(
+    question: str,
+    observations: list[ToolObservation],
+    link_results: list[dict],
+) -> str:
+    lines = [f"与问题相关的已保存链接：{question}", ""]
+    for index, item in enumerate(link_results[:8], start=1):
+        title = item.get("title", "") or "Untitled"
+        heading = item.get("heading", "") or "正文"
+        lines.append(f"{index}. {title} | {heading}")
+        for link in item.get("links", [])[:3]:
+            lines.append(f"   - {link}")
+        snippet = str(item.get("snippet", "")).strip()
+        if snippet:
+            lines.append(f"   snippet: {snippet[:180]}")
+        page_url = item.get("page_url", "")
+        if page_url:
+            lines.append(f"   page: {page_url}")
     lines.append("")
     lines.append("工具链路：")
     for index, observation in enumerate(observations, start=1):
@@ -218,3 +275,28 @@ def serialize_session_turns(rows: list[sqlite3.Row]) -> list[dict]:
 def persist_turns(connection: sqlite3.Connection, session_id: str, question: str, answer: str) -> None:
     save_session_turn(connection, session_id=session_id, role="user", content=question)
     save_session_turn(connection, session_id=session_id, role="assistant", content=answer)
+
+
+def remove_duplicate_calls(
+    planned_calls,
+    observations: list[ToolObservation],
+):
+    seen = {
+        (observation.tool_name, stable_arguments(observation.arguments))
+        for observation in observations
+    }
+    filtered = []
+    for call in planned_calls:
+        key = (call.tool_name, stable_arguments(call.arguments))
+        if key in seen:
+            continue
+        seen.add(key)
+        filtered.append(call)
+    return filtered
+
+
+def stable_arguments(arguments: dict) -> str:
+    try:
+        return json.dumps(arguments, ensure_ascii=False, sort_keys=True)
+    except Exception:
+        return str(arguments)

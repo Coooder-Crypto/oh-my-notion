@@ -33,68 +33,68 @@ def plan_tool_calls(
             top_k=top_k,
         )
         if llm_plan is not None:
-            return llm_plan
+            return normalize_planned_calls(llm_plan, question=question, top_k=top_k)
 
     fallback_follow_up = plan_fallback_follow_up(observation_items)
     if fallback_follow_up is not None:
-        return fallback_follow_up
+        return normalize_planned_calls(fallback_follow_up, question=question, top_k=top_k)
     if observation_items:
         return []
 
     normalized = question.strip().lower()
 
     if any(keyword in normalized for keyword in ("链接", "link", "网址", "url", "文档", "官网", "website")):
-        return [
+        return normalize_planned_calls([
             PlannedToolCall(
                 tool_name="search_saved_links",
                 arguments={"query": question, "limit": 10},
                 reason="The user asks about saved links or online resources.",
             )
-        ]
+        ], question=question, top_k=top_k)
 
     if any(keyword in normalized for keyword in ("之前", "刚才", "上次", "记忆", "memory", "remember")):
-        return [
+        return normalize_planned_calls([
             PlannedToolCall(
                 tool_name="lookup_memory",
                 arguments={"query": question, "limit": 5},
                 reason="The user refers to prior context or saved memory.",
             )
-        ]
+        ], question=question, top_k=top_k)
 
     if any(keyword in normalized for keyword in ("记住", "remember this", "保存这个事实")):
-        return [
+        return normalize_planned_calls([
             PlannedToolCall(
                 tool_name="save_memory",
                 arguments={"content": extract_memory_content(question), "importance": 2},
                 reason="The user explicitly asks to remember something.",
             )
-        ]
+        ], question=question, top_k=top_k)
 
     if any(keyword in normalized for keyword in ("最近", "recent", "latest")):
-        return [
+        return normalize_planned_calls([
             PlannedToolCall(
                 tool_name="list_recent_pages",
                 arguments={"limit": 10},
                 reason="The user asks for recent pages.",
             )
-        ]
+        ], question=question, top_k=top_k)
 
     if any(keyword in normalized for keyword in ("页面", "page id", "page ", "page_id")):
-        return [
+        return normalize_planned_calls([
             PlannedToolCall(
                 tool_name="search_local_notion",
                 arguments={"query": question, "top_k": top_k},
                 reason="The user likely needs evidence before selecting a page.",
             )
-        ]
+        ], question=question, top_k=top_k)
 
-    return [
+    return normalize_planned_calls([
         PlannedToolCall(
             tool_name="search_local_notion",
             arguments={"query": question, "top_k": top_k},
             reason="Default local-first retrieval for answering the question.",
         )
-    ]
+    ], question=question, top_k=top_k)
 
 
 def plan_fallback_follow_up(observations: list[dict]) -> list[PlannedToolCall] | None:
@@ -195,3 +195,37 @@ def extract_memory_content(question: str) -> str:
         if normalized.lower().startswith(prefix.lower()):
             return normalized[len(prefix):].strip() or normalized
     return normalized
+
+
+def normalize_planned_calls(
+    calls: list[PlannedToolCall],
+    question: str,
+    top_k: int,
+) -> list[PlannedToolCall]:
+    normalized_calls: list[PlannedToolCall] = []
+    for call in calls:
+        arguments = dict(call.arguments)
+        if call.tool_name == "search_local_notion":
+            query = str(arguments.get("query", "")).strip()
+            arguments["query"] = query or question
+            arguments["top_k"] = int(arguments.get("top_k") or top_k)
+        elif call.tool_name == "search_saved_links":
+            query = str(arguments.get("query", "")).strip()
+            arguments["query"] = query or question
+            arguments["limit"] = int(arguments.get("limit") or 10)
+        elif call.tool_name == "lookup_memory":
+            query = str(arguments.get("query", "")).strip()
+            arguments["query"] = query or question
+            arguments["limit"] = int(arguments.get("limit") or 5)
+        elif call.tool_name == "save_memory":
+            content = str(arguments.get("content", "")).strip()
+            arguments["content"] = content or extract_memory_content(question)
+            arguments["importance"] = int(arguments.get("importance") or 1)
+        normalized_calls.append(
+            PlannedToolCall(
+                tool_name=call.tool_name,
+                arguments=arguments,
+                reason=call.reason,
+            )
+        )
+    return normalized_calls

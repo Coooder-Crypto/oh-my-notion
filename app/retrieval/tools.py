@@ -43,17 +43,31 @@ def get_page(connection: sqlite3.Connection, page_id: str) -> sqlite3.Row | None
 
 
 def search_saved_links(connection: sqlite3.Connection, query: str, limit: int = 10) -> list[dict]:
-    rows = connection.execute(
-        """
-        SELECT pages.id AS page_id, pages.title AS title, pages.url AS page_url, chunks.heading AS heading, chunks.content AS content
-        FROM chunks
-        JOIN pages ON pages.id = chunks.page_id
-        WHERE chunks.content LIKE ?
-        ORDER BY pages.last_edited_time DESC
-        LIMIT ?
-        """,
-        (f"%{query}%", limit),
-    ).fetchall()
+    normalized_query = (query or "").strip()
+    if normalized_query:
+        rows = connection.execute(
+            """
+            SELECT pages.id AS page_id, pages.title AS title, pages.url AS page_url, chunks.heading AS heading, chunks.content AS content
+            FROM chunks
+            JOIN pages ON pages.id = chunks.page_id
+            WHERE chunks.content LIKE ?
+            ORDER BY pages.last_edited_time DESC
+            LIMIT ?
+            """,
+            (f"%{normalized_query}%", limit),
+        ).fetchall()
+    else:
+        rows = connection.execute(
+            """
+            SELECT pages.id AS page_id, pages.title AS title, pages.url AS page_url, chunks.heading AS heading, chunks.content AS content
+            FROM chunks
+            JOIN pages ON pages.id = chunks.page_id
+            WHERE chunks.content LIKE '%http://%' OR chunks.content LIKE '%https://%'
+            ORDER BY pages.last_edited_time DESC
+            LIMIT ?
+            """,
+            (limit,),
+        ).fetchall()
 
     results: list[dict] = []
     for row in rows:

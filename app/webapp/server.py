@@ -15,7 +15,7 @@ from app.retrieval.tools import list_recent_pages, search_local_notion
 from app.storage.db import connect, init_db
 
 
-STATIC_DIR = Path(__file__).resolve().parent.parent / "web"
+STATIC_DIR = Path(__file__).resolve().parent.parent.parent / "web"
 
 
 def run_server(host: str = "127.0.0.1", port: int = 8000) -> None:
