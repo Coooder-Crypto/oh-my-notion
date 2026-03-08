@@ -101,6 +101,17 @@ def build_dashboard_payload(connection: sqlite3.Connection, raw_snapshots: int =
         LIMIT 10
         """,
     )
+    top_domains = query_named_counts(
+        connection,
+        """
+        SELECT domain AS name, COUNT(*) AS value
+        FROM saved_links
+        WHERE domain != ''
+        GROUP BY domain
+        ORDER BY value DESC, name ASC
+        LIMIT 10
+        """,
+    )
     top_keywords = extract_top_keywords(connection)
 
     return {
@@ -111,6 +122,7 @@ def build_dashboard_payload(connection: sqlite3.Connection, raw_snapshots: int =
         "top_pages_by_chunks": top_pages_by_chunks,
         "top_pages_by_links": top_pages_by_links,
         "top_headings": top_headings,
+        "top_domains": top_domains,
         "top_keywords": top_keywords,
         "insights": build_insights(
             overview=overview,
@@ -118,6 +130,7 @@ def build_dashboard_payload(connection: sqlite3.Connection, raw_snapshots: int =
             source_types=source_types,
             top_pages_by_chunks=top_pages_by_chunks,
             top_pages_by_links=top_pages_by_links,
+            top_domains=top_domains,
             top_keywords=top_keywords,
         ),
     }
@@ -168,6 +181,7 @@ def build_insights(
     source_types: list[dict],
     top_pages_by_chunks: list[dict],
     top_pages_by_links: list[dict],
+    top_domains: list[dict],
     top_keywords: list[dict],
 ) -> list[str]:
     insights: list[str] = []
@@ -197,5 +211,7 @@ def build_insights(
     if top_keywords:
         keyword_text = "、".join(item["name"] for item in top_keywords[:5])
         insights.append(f"当前内容里的高频主题词包括：{keyword_text}。")
+    if top_domains:
+        domain_text = "、".join(item["name"] for item in top_domains[:3])
+        insights.append(f"最常出现的外部站点包括：{domain_text}。")
     return insights
-

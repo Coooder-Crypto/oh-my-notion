@@ -4,10 +4,13 @@ from dataclasses import dataclass
 import sqlite3
 from typing import Any, Callable
 
-from app.agent.memory import lookup_memory, save_memory_fact
+from app.agent.memory import lookup_memory, lookup_preferences, save_memory_fact, save_memory_preference
 from app.retrieval.tools import (
+    find_pages_by_domain,
     get_page,
+    get_link_domain_summary,
     list_recent_pages,
+    list_top_link_domains,
     read_network_link,
     search_local_notion,
     search_saved_links,
@@ -40,8 +43,25 @@ def build_tool_registry(
     def tool_read_network_link(url: str, max_chars: int = 4000) -> Any:
         return read_network_link(url=url, max_chars=max_chars)
 
+    def tool_list_top_link_domains(limit: int = 10) -> Any:
+        return list_top_link_domains(connection, limit=limit)
+
+    def tool_find_pages_by_domain(domain: str, limit: int = 10) -> Any:
+        return find_pages_by_domain(connection, domain=domain, limit=limit)
+
+    def tool_get_link_domain_summary(domain: str) -> Any:
+        return get_link_domain_summary(connection, domain=domain)
+
     def tool_lookup_memory(query: str, limit: int = 5) -> Any:
         return lookup_memory(
+            connection,
+            query=query,
+            limit=limit,
+            session_id=session_id,
+        )
+
+    def tool_lookup_preferences(query: str, limit: int = 5) -> Any:
+        return lookup_preferences(
             connection,
             query=query,
             limit=limit,
@@ -55,6 +75,15 @@ def build_tool_registry(
             session_id=session_id,
             source="agent",
             importance=importance,
+        )
+
+    def tool_save_preference(category: str, content: str, confidence: float = 0.9) -> Any:
+        return save_memory_preference(
+            connection,
+            category=category,
+            content=content,
+            session_id=session_id,
+            confidence=confidence,
         )
 
     return {
@@ -83,14 +112,39 @@ def build_tool_registry(
             description="Read the content of a relevant URL saved in notion.",
             handler=tool_read_network_link,
         ),
+        "list_top_link_domains": ToolDefinition(
+            name="list_top_link_domains",
+            description="List domains that appear most often in saved links.",
+            handler=tool_list_top_link_domains,
+        ),
+        "find_pages_by_domain": ToolDefinition(
+            name="find_pages_by_domain",
+            description="Find pages that saved links from a specific domain.",
+            handler=tool_find_pages_by_domain,
+        ),
+        "get_link_domain_summary": ToolDefinition(
+            name="get_link_domain_summary",
+            description="Return a cached summary for how a domain appears in local notion notes.",
+            handler=tool_get_link_domain_summary,
+        ),
         "lookup_memory": ToolDefinition(
             name="lookup_memory",
             description="Search saved long-term memory facts and notes relevant to the current question.",
             handler=tool_lookup_memory,
         ),
+        "lookup_preferences": ToolDefinition(
+            name="lookup_preferences",
+            description="Search saved user preferences relevant to the current question.",
+            handler=tool_lookup_preferences,
+        ),
         "save_memory": ToolDefinition(
             name="save_memory",
             description="Save an important fact into long-term memory.",
             handler=tool_save_memory,
+        ),
+        "save_preference": ToolDefinition(
+            name="save_preference",
+            description="Save a stable user preference into memory.",
+            handler=tool_save_preference,
         ),
     }

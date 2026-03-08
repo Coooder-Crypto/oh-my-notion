@@ -14,6 +14,7 @@ const pageKindBars = document.getElementById("page-kind-bars");
 const sourceTypeBars = document.getElementById("source-type-bars");
 const activityBars = document.getElementById("activity-bars");
 const keywordCloud = document.getElementById("keyword-cloud");
+const domainBars = document.getElementById("domain-bars");
 const chunkHeavyPages = document.getElementById("chunk-heavy-pages");
 const linkHeavyPages = document.getElementById("link-heavy-pages");
 
@@ -109,6 +110,7 @@ async function loadDashboard() {
   renderBarList(sourceTypeBars, payload.source_types || []);
   renderBarList(activityBars, payload.recent_activity || []);
   renderKeywordCloud(payload.top_keywords || []);
+  renderBarList(domainBars, payload.top_domains || []);
   renderHeavyPages(chunkHeavyPages, payload.top_pages_by_chunks || [], "chunk_count", "chunks");
   renderHeavyPages(linkHeavyPages, payload.top_pages_by_links || [], "link_count", "links");
 }

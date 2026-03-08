@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import json
+import re
 
 from app.core.config import Settings
 from app.llm import create_openai_client
@@ -43,12 +44,59 @@ def plan_tool_calls(
 
     normalized = question.strip().lower()
 
+    domain_candidate = extract_domain_candidate(question)
+
+    if any(keyword in normalized for keyword in ("top domains", "top domain", "域名", "哪些网站保存最多", "链接最多的网站", "常见网站")):
+        return normalize_planned_calls([
+            PlannedToolCall(
+                tool_name="list_top_link_domains",
+                arguments={"limit": 10},
+                reason="The user asks for domain-level link aggregation.",
+            )
+        ], question=question, top_k=top_k)
+
+    if domain_candidate and any(keyword in normalized for keyword in ("哪些笔记", "哪些页面", "保存过", "提到过", "出现过")):
+        return normalize_planned_calls([
+            PlannedToolCall(
+                tool_name="find_pages_by_domain",
+                arguments={"domain": domain_candidate, "limit": 10},
+                reason="The user asks which pages mention a specific website/domain.",
+            )
+        ], question=question, top_k=top_k)
+
+    if domain_candidate and any(keyword in normalized for keyword in ("总结", "summary", "概览", "这个网站", "该网站")):
+        return normalize_planned_calls([
+            PlannedToolCall(
+                tool_name="get_link_domain_summary",
+                arguments={"domain": domain_candidate},
+                reason="The user asks for a summary of how a domain appears in the notes.",
+            )
+        ], question=question, top_k=top_k)
+
     if any(keyword in normalized for keyword in ("链接", "link", "网址", "url", "文档", "官网", "website")):
         return normalize_planned_calls([
             PlannedToolCall(
                 tool_name="search_saved_links",
                 arguments={"query": question, "limit": 10},
                 reason="The user asks about saved links or online resources.",
+            )
+        ], question=question, top_k=top_k)
+
+    if normalized.startswith(("我喜欢", "我偏好", "我更喜欢", "我通常")):
+        return normalize_planned_calls([
+            PlannedToolCall(
+                tool_name="save_preference",
+                arguments={"category": "user_preference", "content": question, "confidence": 0.9},
+                reason="The user states a stable preference that should be stored separately.",
+            )
+        ], question=question, top_k=top_k)
+
+    if any(keyword in normalized for keyword in ("记住", "remember this", "保存这个事实")):
+        return normalize_planned_calls([
+            PlannedToolCall(
+                tool_name="save_memory",
+                arguments={"content": extract_memory_content(question), "importance": 2},
+                reason="The user explicitly asks to remember something.",
             )
         ], question=question, top_k=top_k)
 
@@ -61,12 +109,12 @@ def plan_tool_calls(
             )
         ], question=question, top_k=top_k)
 
-    if any(keyword in normalized for keyword in ("记住", "remember this", "保存这个事实")):
+    if any(keyword in normalized for keyword in ("偏好", "喜欢", "preference")):
         return normalize_planned_calls([
             PlannedToolCall(
-                tool_name="save_memory",
-                arguments={"content": extract_memory_content(question), "importance": 2},
-                reason="The user explicitly asks to remember something.",
+                tool_name="lookup_preferences",
+                arguments={"query": question, "limit": 5},
+                reason="The user asks about stable preferences or favored options.",
             )
         ], question=question, top_k=top_k)
 
@@ -221,6 +269,24 @@ def normalize_planned_calls(
             content = str(arguments.get("content", "")).strip()
             arguments["content"] = content or extract_memory_content(question)
             arguments["importance"] = int(arguments.get("importance") or 1)
+        elif call.tool_name == "lookup_preferences":
+            query = str(arguments.get("query", "")).strip()
+            arguments["query"] = query or question
+            arguments["limit"] = int(arguments.get("limit") or 5)
+        elif call.tool_name == "save_preference":
+            arguments["category"] = str(arguments.get("category", "")).strip() or "user_preference"
+            content = str(arguments.get("content", "")).strip()
+            arguments["content"] = content or question
+            arguments["confidence"] = float(arguments.get("confidence") or 0.9)
+        elif call.tool_name == "find_pages_by_domain":
+            domain = str(arguments.get("domain", "")).strip()
+            arguments["domain"] = domain or extract_domain_candidate(question)
+            arguments["limit"] = int(arguments.get("limit") or 10)
+        elif call.tool_name == "get_link_domain_summary":
+            domain = str(arguments.get("domain", "")).strip()
+            arguments["domain"] = domain or extract_domain_candidate(question)
+        elif call.tool_name == "list_top_link_domains":
+            arguments["limit"] = int(arguments.get("limit") or 10)
         normalized_calls.append(
             PlannedToolCall(
                 tool_name=call.tool_name,
@@ -229,3 +295,30 @@ def normalize_planned_calls(
             )
         )
     return normalized_calls
+
+
+def extract_domain_candidate(question: str) -> str:
+    patterns = [
+        r"(?:https?://)?([a-zA-Z0-9.-]+\.[a-zA-Z]{2,})(?:/|$)",
+        r"(github|notion|vercel|openai|react|vite|shadcn|recharts)\.(com|dev|io|org)",
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, question)
+        if match:
+            if len(match.groups()) == 1:
+                return match.group(1).lower()
+            return ".".join(part for part in match.groups() if part).lower()
+    lowered = question.lower()
+    keyword_domains = {
+        "github": "github.com",
+        "notion": "notion.so",
+        "openai": "openai.com",
+        "vercel": "vercel.com",
+        "shadcn": "ui.shadcn.com",
+        "recharts": "recharts.org",
+        "react": "react.dev",
+    }
+    for keyword, domain in keyword_domains.items():
+        if keyword in lowered:
+            return domain
+    return ""

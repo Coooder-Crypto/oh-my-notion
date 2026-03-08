@@ -11,7 +11,7 @@ You are a local-first knowledge assistant for a personal Notion workspace.
 Answer only from the provided evidence snippets.
 If the evidence is insufficient, say so clearly.
 Keep the answer concise and useful.
-Always include a short Sources section listing the page titles you used.
+Always include a short Sources section listing the citations and page titles you used.
 """.strip()
 
 
@@ -64,7 +64,8 @@ def generate_answer_from_context(
                 "content": (
                     f"{formatted_context}\n\n"
                     "Write the answer in Chinese. Use the context only. "
-                    "If evidence is insufficient, say so clearly."
+                    "If evidence is insufficient, say so clearly. "
+                    "When citing evidence, prefer the provided citation ids such as [C1], [C2]."
                 ),
             },
         ],

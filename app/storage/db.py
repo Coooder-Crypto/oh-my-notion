@@ -59,6 +59,27 @@ SCHEMA_STATEMENTS = (
         source TEXT NOT NULL,
         content TEXT NOT NULL,
         importance INTEGER NOT NULL DEFAULT 1,
+        expires_at TEXT,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS memory_preferences (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        session_id TEXT,
+        category TEXT NOT NULL,
+        content TEXT NOT NULL,
+        confidence REAL NOT NULL DEFAULT 0.8,
+        expires_at TEXT,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS memory_summaries (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        session_id TEXT NOT NULL,
+        summary TEXT NOT NULL,
+        turn_count INTEGER NOT NULL DEFAULT 0,
         created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     )
     """,
@@ -89,6 +110,14 @@ SCHEMA_STATEMENTS = (
         FOREIGN KEY(chunk_id) REFERENCES chunks(chunk_id)
     )
     """,
+    """
+    CREATE TABLE IF NOT EXISTS link_summaries (
+        domain TEXT PRIMARY KEY,
+        summary TEXT NOT NULL,
+        link_count INTEGER NOT NULL DEFAULT 0,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )
+    """,
 )
 
 
@@ -103,6 +132,7 @@ def init_db(connection: sqlite3.Connection) -> None:
     for statement in SCHEMA_STATEMENTS:
         connection.execute(statement)
     ensure_pages_columns(connection)
+    ensure_memory_columns(connection)
     connection.commit()
 
 
@@ -300,6 +330,21 @@ def maybe_add_pages_column(
             raise
 
 
+def ensure_memory_columns(connection: sqlite3.Connection) -> None:
+    existing_columns = set()
+    for row in connection.execute("PRAGMA table_info(memory_facts)").fetchall():
+        if isinstance(row, sqlite3.Row):
+            existing_columns.add(row["name"])
+        else:
+            existing_columns.add(row[1])
+    if "expires_at" not in existing_columns:
+        try:
+            connection.execute("ALTER TABLE memory_facts ADD COLUMN expires_at TEXT")
+        except sqlite3.OperationalError as exc:
+            if "duplicate column name" not in str(exc).lower():
+                raise
+
+
 def get_stats(connection: sqlite3.Connection) -> dict[str, int]:
     pages_count = connection.execute("SELECT COUNT(*) AS count FROM pages").fetchone()["count"]
     chunks_count = connection.execute("SELECT COUNT(*) AS count FROM chunks").fetchone()["count"]
@@ -327,6 +372,12 @@ def get_stats(connection: sqlite3.Connection) -> dict[str, int]:
     memory_facts = connection.execute(
         "SELECT COUNT(*) AS count FROM memory_facts"
     ).fetchone()["count"]
+    memory_preferences = connection.execute(
+        "SELECT COUNT(*) AS count FROM memory_preferences"
+    ).fetchone()["count"]
+    memory_summaries = connection.execute(
+        "SELECT COUNT(*) AS count FROM memory_summaries"
+    ).fetchone()["count"]
     return {
         "pages": pages_count,
         "chunks": chunks_count,
@@ -338,4 +389,6 @@ def get_stats(connection: sqlite3.Connection) -> dict[str, int]:
         "links": links_count,
         "session_turns": session_turns,
         "memory_facts": memory_facts,
+        "memory_preferences": memory_preferences,
+        "memory_summaries": memory_summaries,
     }
