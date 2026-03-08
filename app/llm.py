@@ -47,6 +47,31 @@ def generate_grounded_answer(
     return response.output_text.strip()
 
 
+def generate_answer_from_context(
+    settings: Settings,
+    question: str,
+    formatted_context: str,
+) -> str:
+    client = create_openai_client(settings)
+    if client is None:
+        raise RuntimeError("OPENAI_API_KEY is not configured.")
+    response = client.responses.create(
+        model=settings.openai_model,
+        input=[
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {
+                "role": "user",
+                "content": (
+                    f"{formatted_context}\n\n"
+                    "Write the answer in Chinese. Use the context only. "
+                    "If evidence is insufficient, say so clearly."
+                ),
+            },
+        ],
+    )
+    return response.output_text.strip()
+
+
 def format_evidence(results: list[SearchResult]) -> str:
     lines: list[str] = []
     for index, result in enumerate(results, start=1):

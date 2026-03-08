@@ -2,13 +2,14 @@ from __future__ import annotations
 
 import sqlite3
 
+from app.context.builder import build_context_bundle
 from app.agent.executor import ToolObservation, execute_tool_calls
 from app.agent.planner import plan_tool_calls
 from app.agent.rendering import build_template_answer
 from app.agent.memory import get_session_turns, save_session_turn
 from app.agent.tools_registry import ToolDefinition, build_tool_registry
 from app.core.config import Settings
-from app.llm import generate_grounded_answer
+from app.llm import generate_answer_from_context, generate_grounded_answer
 from app.storage.models import SearchResult
 
 
@@ -38,14 +39,24 @@ def run_agent(
             break
 
     search_results = extract_search_results(observations)
+    memory_items = extract_memory_items(observations)
+    network_content = extract_network_content(observations)
+    context_bundle = build_context_bundle(
+        question=question,
+        search_results=search_results,
+        memory_items=memory_items,
+        session_turns=session_history,
+        tool_observations=observations,
+        network_content=network_content,
+    )
 
     if search_results:
         if settings.openai_api_key:
             try:
-                answer = generate_grounded_answer(
+                answer = generate_answer_from_context(
                     settings=settings,
                     question=question,
-                    results=search_results,
+                    formatted_context=context_bundle.formatted_text,
                 )
                 persist_turns(connection, session_id, question, answer)
                 return answer
@@ -58,13 +69,11 @@ def run_agent(
         persist_turns(connection, session_id, question, answer)
         return answer
 
-    network_content = extract_network_content(observations)
     if network_content:
         answer = render_network_response(question, observations, network_content)
         persist_turns(connection, session_id, question, answer)
         return answer
 
-    memory_items = extract_memory_items(observations)
     if memory_items:
         answer = render_memory_response(question, observations, memory_items)
         persist_turns(connection, session_id, question, answer)
