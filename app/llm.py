@@ -15,15 +15,20 @@ Always include a short Sources section listing the page titles you used.
 """.strip()
 
 
+def create_openai_client(settings: Settings) -> OpenAI | None:
+    if not settings.openai_api_key:
+        return None
+    return OpenAI(api_key=settings.openai_api_key)
+
+
 def generate_grounded_answer(
     settings: Settings,
     question: str,
     results: list[SearchResult],
 ) -> str:
-    if not settings.openai_api_key:
+    client = create_openai_client(settings)
+    if client is None:
         raise RuntimeError("OPENAI_API_KEY is not configured.")
-
-    client = OpenAI(api_key=settings.openai_api_key)
     evidence = format_evidence(results)
     response = client.responses.create(
         model=settings.openai_model,
