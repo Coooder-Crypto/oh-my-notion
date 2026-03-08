@@ -33,7 +33,7 @@ class Settings:
 
 
 def load_settings() -> Settings:
-    project_root = Path(__file__).resolve().parent.parent
+    project_root = Path(__file__).resolve().parent.parent.parent
     env_values = load_env_file(project_root / ".env")
     data_dir = project_root / "data"
     raw_dir = data_dir / "raw"
