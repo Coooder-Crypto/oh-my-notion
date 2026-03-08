@@ -8,6 +8,7 @@ from app.agent import answer_question
 from app.config import load_settings
 from app.db import connect, init_db, replace_page_chunks
 from app.models import Chunk, Page
+from app.reindex import rebuild_index_from_raw
 from app.sync_notion import sync_notion
 from app.tools import list_recent_pages, search_local_notion
 from app.web import run_server
@@ -117,6 +118,14 @@ def sync_command() -> None:
     connection = connect(settings.db_path)
     init_db(connection)
     typer.echo(sync_notion(settings, connection, progress=typer.echo))
+
+
+@app.command("reindex")
+def reindex_command() -> None:
+    settings = load_settings()
+    connection = connect(settings.db_path)
+    init_db(connection)
+    typer.echo(rebuild_index_from_raw(settings.raw_dir, connection, progress=typer.echo))
 
 
 @app.command("serve")

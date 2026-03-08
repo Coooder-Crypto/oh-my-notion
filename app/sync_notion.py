@@ -4,6 +4,7 @@ from dataclasses import dataclass
 import json
 from pathlib import Path
 import socket
+import time
 from typing import Any, Callable
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
@@ -15,6 +16,9 @@ from app.notion_parser import build_chunks, build_page
 
 
 NOTION_API_BASE = "https://api.notion.com/v1"
+REQUEST_TIMEOUT_SECONDS = 30
+MAX_REQUEST_RETRIES = 3
+RETRYABLE_HTTP_STATUS_CODES = {408, 409, 425, 429, 500, 502, 503, 504}
 
 
 @dataclass(slots=True)
@@ -25,6 +29,9 @@ class SyncStats:
     databases_seen: int = 0
     chunks_indexed: int = 0
     raw_files_written: int = 0
+    page_failures: int = 0
+    block_failures: int = 0
+    database_failures: int = 0
 
 
 class NotionClient:
@@ -88,8 +95,6 @@ class NotionClient:
         url = f"{NOTION_API_BASE}{path}"
         if query:
             url = f"{url}?{urlencode(query)}"
-        self.progress(f"[http] {method} {path}")
-
         request = Request(url=url, method=method)
         request.add_header("Authorization", f"Bearer {self.settings.notion_token}")
         request.add_header("Notion-Version", self.settings.notion_version)
@@ -99,18 +104,38 @@ class NotionClient:
         if payload is not None:
             data = json.dumps(payload).encode("utf-8")
 
-        try:
-            with urlopen(request, data=data, timeout=30) as response:
-                return json.loads(response.read().decode("utf-8"))
-        except HTTPError as exc:
-            detail = exc.read().decode("utf-8", errors="replace")
-            raise RuntimeError(
-                f"Notion API request failed with HTTP {exc.code}: {detail}"
-            ) from exc
-        except URLError as exc:
-            raise RuntimeError(f"Unable to reach Notion API: {exc.reason}") from exc
-        except socket.timeout as exc:
-            raise RuntimeError(f"Notion API request timed out for {path}") from exc
+        for attempt in range(1, MAX_REQUEST_RETRIES + 1):
+            self.progress(f"[http] {method} {path} attempt={attempt}")
+            try:
+                with urlopen(request, data=data, timeout=REQUEST_TIMEOUT_SECONDS) as response:
+                    return json.loads(response.read().decode("utf-8"))
+            except HTTPError as exc:
+                detail = exc.read().decode("utf-8", errors="replace")
+                if exc.code in RETRYABLE_HTTP_STATUS_CODES and attempt < MAX_REQUEST_RETRIES:
+                    self._sleep_before_retry(path, attempt, f"HTTP {exc.code}")
+                    continue
+                raise RuntimeError(
+                    f"Notion API request failed for {path} with HTTP {exc.code}: {detail}"
+                ) from exc
+            except socket.timeout as exc:
+                if attempt < MAX_REQUEST_RETRIES:
+                    self._sleep_before_retry(path, attempt, "socket timeout")
+                    continue
+                raise RuntimeError(f"Notion API request timed out for {path}") from exc
+            except URLError as exc:
+                if attempt < MAX_REQUEST_RETRIES and is_retryable_url_error(exc):
+                    self._sleep_before_retry(path, attempt, f"URLError: {exc.reason}")
+                    continue
+                raise RuntimeError(f"Unable to reach Notion API for {path}: {exc.reason}") from exc
+
+        raise RuntimeError(f"Notion API request failed after retries for {path}")
+
+    def _sleep_before_retry(self, path: str, attempt: int, reason: str) -> None:
+        delay_seconds = min(2 ** (attempt - 1), 8)
+        self.progress(
+            f"[retry] {path} after {reason}; retrying in {delay_seconds}s"
+        )
+        time.sleep(delay_seconds)
 
 
 def sync_notion(
@@ -147,7 +172,9 @@ def sync_notion(
     return (
         f"Notion sync completed. Seen {stats.pages_seen} pages and {stats.databases_seen} databases, "
         f"indexed {stats.pages_indexed} pages, skipped {stats.pages_skipped} unchanged pages, "
-        f"indexed {stats.chunks_indexed} chunks, wrote {stats.raw_files_written} raw files."
+        f"indexed {stats.chunks_indexed} chunks, wrote {stats.raw_files_written} raw files, "
+        f"page failures={stats.page_failures}, database failures={stats.database_failures}, "
+        f"block failures={stats.block_failures}."
     )
 
 
@@ -167,7 +194,14 @@ def sync_page_tree(
     stats.pages_seen += 1
 
     progress(f"[page] fetching metadata {page_id}")
-    page_data = client.get_page(page_id)
+    try:
+        page_data = client.get_page(page_id)
+    except RuntimeError as exc:
+        stats.page_failures += 1
+        progress(f"[page] failed metadata {page_id}: {exc}")
+        if page_id == settings.notion_root_page_id:
+            raise
+        return
     page = build_page(page_data, raw_json_path=None)
     sync_state = get_page_sync_state(connection, page_id)
     cached_payload = load_cached_payload(sync_state)
@@ -187,7 +221,14 @@ def sync_page_tree(
         )
     else:
         progress(f"[page] indexing {page.title or page_id}")
-        block_tree = fetch_block_tree(client, page_id, progress=progress)
+        try:
+            block_tree = fetch_block_tree(client, page_id, progress=progress, stats=stats)
+        except RuntimeError as exc:
+            stats.page_failures += 1
+            progress(f"[page] failed blocks {page.title or page_id}: {exc}")
+            if page_id == settings.notion_root_page_id:
+                raise
+            return
         raw_json_path = write_raw_payload(
             raw_dir=settings.raw_dir,
             object_id=page_id,
@@ -205,29 +246,37 @@ def sync_page_tree(
         if block_type == "child_page":
             child_page_id = block.get("id")
             if child_page_id:
-                sync_page_tree(
-                    page_id=child_page_id,
-                    client=client,
-                    settings=settings,
-                    connection=connection,
-                    stats=stats,
-                    visited_pages=visited_pages,
-                    visited_databases=visited_databases,
-                    progress=progress,
-                )
+                try:
+                    sync_page_tree(
+                        page_id=child_page_id,
+                        client=client,
+                        settings=settings,
+                        connection=connection,
+                        stats=stats,
+                        visited_pages=visited_pages,
+                        visited_databases=visited_databases,
+                        progress=progress,
+                    )
+                except RuntimeError as exc:
+                    stats.page_failures += 1
+                    progress(f"[page] skipped child page {child_page_id}: {exc}")
         elif block_type == "child_database":
             database_id = block.get("id")
             if database_id:
-                sync_database(
-                    database_id=database_id,
-                    client=client,
-                    settings=settings,
-                    connection=connection,
-                    stats=stats,
-                    visited_pages=visited_pages,
-                    visited_databases=visited_databases,
-                    progress=progress,
-                )
+                try:
+                    sync_database(
+                        database_id=database_id,
+                        client=client,
+                        settings=settings,
+                        connection=connection,
+                        stats=stats,
+                        visited_pages=visited_pages,
+                        visited_databases=visited_databases,
+                        progress=progress,
+                    )
+                except RuntimeError as exc:
+                    stats.database_failures += 1
+                    progress(f"[database] skipped child database {database_id}: {exc}")
 
 
 def sync_database(
@@ -246,7 +295,12 @@ def sync_database(
     stats.databases_seen += 1
 
     progress(f"[database] fetching entries {database_id}")
-    pages = client.query_database(database_id)
+    try:
+        pages = client.query_database(database_id)
+    except RuntimeError as exc:
+        stats.database_failures += 1
+        progress(f"[database] failed entries {database_id}: {exc}")
+        return
     write_raw_payload(
         raw_dir=settings.raw_dir,
         object_id=database_id,
@@ -257,22 +311,27 @@ def sync_database(
     for page in pages:
         page_id = page.get("id")
         if page_id:
-            sync_page_tree(
-                page_id=page_id,
-                client=client,
-                settings=settings,
-                connection=connection,
-                stats=stats,
-                visited_pages=visited_pages,
-                visited_databases=visited_databases,
-                progress=progress,
-            )
+            try:
+                sync_page_tree(
+                    page_id=page_id,
+                    client=client,
+                    settings=settings,
+                    connection=connection,
+                    stats=stats,
+                    visited_pages=visited_pages,
+                    visited_databases=visited_databases,
+                    progress=progress,
+                )
+            except RuntimeError as exc:
+                stats.page_failures += 1
+                progress(f"[page] skipped database entry {page_id}: {exc}")
 
 
 def fetch_block_tree(
     client: NotionClient,
     block_id: str,
     progress: Callable[[str], None],
+    stats: SyncStats,
     depth: int = 0,
 ) -> list[dict[str, Any]]:
     progress(f"[blocks] depth={depth} loading children for {block_id}")
@@ -284,12 +343,20 @@ def fetch_block_tree(
             progress(
                 f"[blocks] depth={depth} recurse into {child['id']} type={block_type}"
             )
-            child["_children"] = fetch_block_tree(
-                client,
-                child["id"],
-                progress=progress,
-                depth=depth + 1,
-            )
+            try:
+                child["_children"] = fetch_block_tree(
+                    client,
+                    child["id"],
+                    progress=progress,
+                    stats=stats,
+                    depth=depth + 1,
+                )
+            except RuntimeError as exc:
+                stats.block_failures += 1
+                progress(
+                    f"[blocks] depth={depth} skip child {child['id']} type={block_type}: {exc}"
+                )
+                child["_children"] = []
     return children
 
 
@@ -326,3 +393,19 @@ def load_cached_payload(sync_state: Any) -> dict[str, Any] | None:
         return json.loads(path.read_text(encoding="utf-8"))
     except json.JSONDecodeError:
         return None
+
+
+def is_retryable_url_error(exc: URLError) -> bool:
+    reason = str(exc.reason).lower()
+    retry_keywords = (
+        "timed out",
+        "temporary failure",
+        "connection reset",
+        "connection aborted",
+        "connection refused",
+        "network is unreachable",
+        "service not known",
+        "try again",
+        "ssl",
+    )
+    return any(keyword in reason for keyword in retry_keywords)

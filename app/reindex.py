@@ -1,0 +1,56 @@
+from __future__ import annotations
+
+import json
+from pathlib import Path
+from typing import Callable
+
+from app.db import init_db, replace_page_chunks, reset_index
+from app.notion_parser import build_chunks, build_page
+
+
+def rebuild_index_from_raw(
+    raw_dir: Path,
+    connection,
+    progress: Callable[[str], None] | None = None,
+) -> str:
+    reporter = progress or (lambda _message: None)
+    init_db(connection)
+
+    raw_files = sorted(raw_dir.glob("*.json"))
+    page_snapshots = []
+    for raw_file in raw_files:
+        payload = load_payload(raw_file)
+        if not payload or "page" not in payload or "blocks" not in payload:
+            continue
+        page_snapshots.append((raw_file, payload))
+
+    if not page_snapshots:
+        return f"No page snapshots found in {raw_dir}"
+
+    reset_index(connection)
+
+    pages_indexed = 0
+    chunks_indexed = 0
+    for raw_file, payload in page_snapshots:
+        page_data = payload["page"]
+        blocks = payload["blocks"]
+        page = build_page(page_data, raw_json_path=str(raw_file))
+        chunks = build_chunks(page, blocks)
+        replace_page_chunks(connection, page, chunks)
+        pages_indexed += 1
+        chunks_indexed += len(chunks)
+        reporter(
+            f"[reindex] {page.title or page.id}: {len(chunks)} chunks from {raw_file.name}"
+        )
+
+    return (
+        f"Reindex completed. Indexed {pages_indexed} pages and {chunks_indexed} chunks "
+        f"from {len(page_snapshots)} raw snapshots."
+    )
+
+
+def load_payload(path: Path) -> dict | None:
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None

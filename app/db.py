@@ -121,3 +121,10 @@ def get_page_sync_state(connection: sqlite3.Connection, page_id: str) -> sqlite3
         (page_id,),
     )
     return cursor.fetchone()
+
+
+def reset_index(connection: sqlite3.Connection) -> None:
+    connection.execute("DELETE FROM chunks")
+    connection.execute("DELETE FROM chunks_fts")
+    connection.execute("DELETE FROM pages")
+    connection.commit()

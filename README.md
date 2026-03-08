@@ -12,7 +12,7 @@ It is designed as a learning project for agent development:
 - Local SQLite storage
 - SQLite FTS5 full-text search
 - Local-first agent flow
-- CLI entrypoint for `init-db`, `ingest-sample`, `search`, `ask`, and `serve`
+- CLI entrypoint for `init-db`, `ingest-sample`, `search`, `ask`, `sync`, `reindex`, and `serve`
 - Real Notion sync for pages, child pages, and database entries
 - Lightweight web frontend served by Python
 - Optional OpenAI API integration for grounded answer generation
@@ -49,6 +49,7 @@ Then edit `.env` and run:
 
 ```bash
 oh-my-notion sync
+oh-my-notion reindex
 oh-my-notion recent
 oh-my-notion ask "我关于 agent routing 的笔记写了什么？"
 ```
@@ -86,6 +87,16 @@ When `OPENAI_API_KEY` is configured, `ask` and the web UI will:
 - generate a concise Chinese answer grounded in those snippets
 
 If the API key is missing or the API call fails, the app falls back to the local evidence template.
+
+## Reindex From Raw Data
+
+If you only changed parsing or cleaning rules, you usually do not need to call Notion again.
+
+```bash
+oh-my-notion reindex
+```
+
+This rebuilds the local SQLite index from `data/raw/*.json`.
 
 ## Suggested Next Steps
 
