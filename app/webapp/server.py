@@ -8,10 +8,10 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 from app.agent import answer_question
-from app.config import load_settings
-from app.db import connect, init_db
-from app.sync_notion import sync_notion
-from app.tools import list_recent_pages, search_local_notion
+from app.core.config import load_settings
+from app.notion.sync import sync_notion
+from app.retrieval.tools import list_recent_pages, search_local_notion
+from app.storage.db import connect, init_db
 
 
 STATIC_DIR = Path(__file__).resolve().parent.parent / "web"

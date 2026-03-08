@@ -4,8 +4,8 @@ from dataclasses import dataclass
 import sqlite3
 from typing import Any, Callable
 
-from app.memory import lookup_memory, save_memory_fact
-from app.tools import (
+from app.agent.memory import lookup_memory, save_memory_fact
+from app.retrieval.tools import (
     get_page,
     list_recent_pages,
     read_network_link,

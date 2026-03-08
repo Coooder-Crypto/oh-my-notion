@@ -4,8 +4,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from app.cleaner import clean_text
-from app.notion_parser import (
+from app.notion.parser import (
     build_chunks,
     build_page,
     classify_page_kind,
@@ -13,6 +12,7 @@ from app.notion_parser import (
     extract_links_from_block_tree,
     flatten_blocks_with_depth,
 )
+from app.storage.cleaner import clean_text
 
 
 def resolve_raw_target(raw_dir: Path, target: str) -> Path:

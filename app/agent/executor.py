@@ -3,8 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from app.agent_planner import PlannedToolCall
-from app.tools_registry import ToolDefinition
+from app.agent.planner import PlannedToolCall
+from app.agent.tools_registry import ToolDefinition
 
 
 @dataclass(slots=True)

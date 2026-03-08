@@ -2,14 +2,14 @@ from __future__ import annotations
 
 import sqlite3
 
-from app.answer_rendering import build_template_answer
-from app.agent_executor import ToolObservation, execute_tool_calls
-from app.agent_planner import plan_tool_calls
-from app.config import Settings
+from app.agent.executor import ToolObservation, execute_tool_calls
+from app.agent.planner import plan_tool_calls
+from app.agent.rendering import build_template_answer
+from app.agent.memory import get_session_turns, save_session_turn
+from app.agent.tools_registry import ToolDefinition, build_tool_registry
+from app.core.config import Settings
 from app.llm import generate_grounded_answer
-from app.memory import get_session_turns, save_session_turn
-from app.models import SearchResult
-from app.tools_registry import ToolDefinition, build_tool_registry
+from app.storage.models import SearchResult
 
 
 def run_agent(

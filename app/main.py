@@ -5,20 +5,20 @@ from datetime import datetime, timezone
 import typer
 
 from app.agent import answer_question
-from app.config import load_settings
-from app.db import connect, get_stats, init_db, replace_page_chunks
-from app.inspect import (
+from app.core.config import load_settings
+from app.inspection.inspectors import (
     inspect_chunks_snapshot,
     inspect_links_snapshot,
     inspect_page_snapshot,
     inspect_raw_snapshot,
     resolve_raw_target,
 )
-from app.models import Chunk, Page
-from app.reindex import rebuild_index_from_raw
-from app.sync_notion import sync_notion
-from app.tools import list_recent_pages, search_local_notion
-from app.web import run_server
+from app.notion.sync import sync_notion
+from app.retrieval.tools import list_recent_pages, search_local_notion
+from app.storage.db import connect, get_stats, init_db, replace_page_chunks
+from app.storage.models import Chunk, Page
+from app.storage.reindex import rebuild_index_from_raw
+from app.webapp.server import run_server
 
 
 app = typer.Typer(no_args_is_help=True, help="Local-first Notion agent CLI.")

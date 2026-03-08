@@ -4,8 +4,8 @@ import json
 from pathlib import Path
 from typing import Callable
 
-from app.db import init_db, replace_page_chunks, reset_index
-from app.notion_parser import build_chunks, build_page
+from app.notion.parser import build_chunks, build_page
+from app.storage.db import init_db, replace_page_chunks, reset_index
 
 
 def rebuild_index_from_raw(

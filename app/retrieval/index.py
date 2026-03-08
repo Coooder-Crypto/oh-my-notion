@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import sqlite3
 
-from app.models import SearchResult
+from app.storage.models import SearchResult
 
 
 def search_chunks(connection: sqlite3.Connection, query: str, top_k: int = 5) -> list[SearchResult]:
@@ -38,4 +38,3 @@ def search_chunks(connection: sqlite3.Connection, query: str, top_k: int = 5) ->
         )
         for row in rows
     ]
-

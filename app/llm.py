@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from openai import OpenAI
 
-from app.config import Settings
-from app.models import SearchResult
+from app.core.config import Settings
+from app.storage.models import SearchResult
 
 
 SYSTEM_PROMPT = """

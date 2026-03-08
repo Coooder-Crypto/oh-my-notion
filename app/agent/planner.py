@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import json
 
-from app.config import Settings
+from app.core.config import Settings
 from app.llm import create_openai_client
 
 

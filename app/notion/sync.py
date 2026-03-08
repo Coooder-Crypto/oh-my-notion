@@ -11,9 +11,9 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
-from app.config import Settings
-from app.db import get_page_sync_state, init_db, replace_page_chunks
-from app.notion_parser import build_chunks, build_page
+from app.core.config import Settings
+from app.notion.parser import build_chunks, build_page
+from app.storage.db import get_page_sync_state, init_db, replace_page_chunks
 
 
 NOTION_API_BASE = "https://api.notion.com/v1"

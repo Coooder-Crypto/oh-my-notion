@@ -2,12 +2,12 @@ from __future__ import annotations
 
 import sqlite3
 
-from app.agent_runtime import run_agent
-from app.answer_rendering import build_template_answer
-from app.config import Settings
+from app.agent.rendering import build_template_answer
+from app.agent.runtime import run_agent
+from app.core.config import Settings
 from app.llm import generate_grounded_answer
-from app.models import SearchResult
-from app.tools import search_local_notion
+from app.retrieval.tools import search_local_notion
+from app.storage.models import SearchResult
 
 
 def answer_question(

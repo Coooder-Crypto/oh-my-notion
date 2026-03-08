@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from app.models import SearchResult
+from app.storage.models import SearchResult
 
 
 def build_template_answer(results: list[SearchResult], llm_enabled: bool) -> str:

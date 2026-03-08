@@ -3,8 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from app.cleaner import normalize_block_text, should_skip_block
-from app.models import Chunk, Page
+from app.storage.cleaner import normalize_block_text, should_skip_block
+from app.storage.models import Chunk, Page
 
 
 SUPPORTED_RICH_TEXT_TYPES = {

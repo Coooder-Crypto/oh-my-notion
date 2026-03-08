@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 import sqlite3
 
-from app.models import Chunk, Page
+from app.storage.models import Chunk, Page
 
 
 SCHEMA_STATEMENTS = (

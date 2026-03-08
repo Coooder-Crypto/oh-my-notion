@@ -5,8 +5,8 @@ import sqlite3
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
-from app.index import search_chunks
-from app.models import SearchResult
+from app.retrieval.index import search_chunks
+from app.storage.models import SearchResult
 
 
 def search_local_notion(
