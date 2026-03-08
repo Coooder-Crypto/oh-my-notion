@@ -1,0 +1,2 @@
+[console_scripts]
+oh-my-notion = app.main:app

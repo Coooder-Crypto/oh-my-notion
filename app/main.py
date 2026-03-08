@@ -113,9 +113,10 @@ def recent_command(limit: int = 10) -> None:
 @app.command("sync")
 def sync_command() -> None:
     settings = load_settings()
-    typer.echo(sync_notion(settings))
+    connection = connect(settings.db_path)
+    init_db(connection)
+    typer.echo(sync_notion(settings, connection))
 
 
 if __name__ == "__main__":
     app()
-

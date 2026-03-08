@@ -1,3 +1,11 @@
+Metadata-Version: 2.4
+Name: oh-my-notion
+Version: 0.1.0
+Summary: A local-first Notion agent for learning agent development.
+Requires-Python: >=3.11
+Description-Content-Type: text/markdown
+Requires-Dist: typer<1.0,>=0.12
+
 # Oh My Notion
 
 `Oh My Notion` is a Python MVP for a local-first Notion agent. It prioritizes local search over synced Notion content, then uses the retrieved evidence to answer questions.

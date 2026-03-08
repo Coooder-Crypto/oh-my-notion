@@ -14,15 +14,19 @@ class Settings:
     db_path: Path
     notion_token: str | None
     notion_root_page_id: str | None
+    notion_version: str
 
 
 def load_settings() -> Settings:
     project_root = Path(__file__).resolve().parent.parent
+    env_values = load_env_file(project_root / ".env")
     data_dir = project_root / "data"
     raw_dir = data_dir / "raw"
     db_dir = data_dir / "db"
     default_db_path = db_dir / "oh_my_notion.sqlite3"
-    db_path = Path(os.getenv("OH_MY_NOTION_DB_PATH", str(default_db_path)))
+    db_path = Path(
+        get_config_value("OH_MY_NOTION_DB_PATH", env_values, str(default_db_path))
+    )
 
     return Settings(
         project_root=project_root,
@@ -30,7 +34,33 @@ def load_settings() -> Settings:
         raw_dir=raw_dir,
         db_dir=db_dir,
         db_path=db_path,
-        notion_token=os.getenv("NOTION_TOKEN"),
-        notion_root_page_id=os.getenv("NOTION_ROOT_PAGE_ID"),
+        notion_token=get_config_value("NOTION_TOKEN", env_values),
+        notion_root_page_id=get_config_value("NOTION_ROOT_PAGE_ID", env_values),
+        notion_version=get_config_value("NOTION_VERSION", env_values, "2022-06-28") or "2022-06-28",
     )
 
+
+def load_env_file(env_path: Path) -> dict[str, str]:
+    if not env_path.exists():
+        return {}
+
+    values: dict[str, str] = {}
+    for raw_line in env_path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+
+        key, value = line.split("=", 1)
+        normalized_key = key.strip()
+        normalized_value = value.strip().strip("'").strip('"')
+        values[normalized_key] = normalized_value
+
+    return values
+
+
+def get_config_value(
+    key: str,
+    env_values: dict[str, str],
+    default: str | None = None,
+) -> str | None:
+    return os.getenv(key) or env_values.get(key) or default
