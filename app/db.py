@@ -41,6 +41,25 @@ SCHEMA_STATEMENTS = (
         content
     )
     """,
+    """
+    CREATE TABLE IF NOT EXISTS session_turns (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        session_id TEXT NOT NULL,
+        role TEXT NOT NULL,
+        content TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS memory_facts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        session_id TEXT,
+        source TEXT NOT NULL,
+        content TEXT NOT NULL,
+        importance INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )
+    """,
 )
 
 
@@ -210,6 +229,12 @@ def get_stats(connection: sqlite3.Connection) -> dict[str, int]:
     links_count = connection.execute(
         "SELECT COALESCE(SUM(link_count), 0) AS count FROM pages"
     ).fetchone()["count"]
+    session_turns = connection.execute(
+        "SELECT COUNT(*) AS count FROM session_turns"
+    ).fetchone()["count"]
+    memory_facts = connection.execute(
+        "SELECT COUNT(*) AS count FROM memory_facts"
+    ).fetchone()["count"]
     return {
         "pages": pages_count,
         "chunks": chunks_count,
@@ -217,4 +242,6 @@ def get_stats(connection: sqlite3.Connection) -> dict[str, int]:
         "container_pages": container_pages,
         "content_pages": content_pages,
         "links": links_count,
+        "session_turns": session_turns,
+        "memory_facts": memory_facts,
     }

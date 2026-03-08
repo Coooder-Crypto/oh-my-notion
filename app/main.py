@@ -98,11 +98,19 @@ def search_command(query: str, top_k: int = 5) -> None:
 
 
 @app.command("ask")
-def ask_command(question: str, top_k: int = 5) -> None:
+def ask_command(question: str, top_k: int = 5, session_id: str = "default") -> None:
     settings = load_settings()
     connection = connect(settings.db_path)
     init_db(connection)
-    typer.echo(answer_question(connection, settings=settings, question=question, top_k=top_k))
+    typer.echo(
+        answer_question(
+            connection,
+            settings=settings,
+            question=question,
+            top_k=top_k,
+            session_id=session_id,
+        )
+    )
 
 
 @app.command("recent")

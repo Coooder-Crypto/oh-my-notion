@@ -4,6 +4,7 @@ from dataclasses import dataclass
 import sqlite3
 from typing import Any, Callable
 
+from app.memory import lookup_memory, save_memory_fact
 from app.tools import (
     get_page,
     list_recent_pages,
@@ -20,7 +21,10 @@ class ToolDefinition:
     handler: Callable[..., Any]
 
 
-def build_tool_registry(connection: sqlite3.Connection) -> dict[str, ToolDefinition]:
+def build_tool_registry(
+    connection: sqlite3.Connection,
+    session_id: str = "default",
+) -> dict[str, ToolDefinition]:
     return {
         "search_local_notion": ToolDefinition(
             name="search_local_notion",
@@ -46,5 +50,26 @@ def build_tool_registry(connection: sqlite3.Connection) -> dict[str, ToolDefinit
             name="read_network_link",
             description="Read the content of a relevant URL saved in notion.",
             handler=lambda url, max_chars=4000: read_network_link(url=url, max_chars=max_chars),
+        ),
+        "lookup_memory": ToolDefinition(
+            name="lookup_memory",
+            description="Search saved long-term memory facts and notes relevant to the current question.",
+            handler=lambda query, limit=5: lookup_memory(
+                connection,
+                query=query,
+                limit=limit,
+                session_id=session_id,
+            ),
+        ),
+        "save_memory": ToolDefinition(
+            name="save_memory",
+            description="Save an important fact into long-term memory.",
+            handler=lambda content, importance=1: save_memory_fact(
+                connection,
+                content=content,
+                session_id=session_id,
+                source="agent",
+                importance=importance,
+            ),
         ),
     }

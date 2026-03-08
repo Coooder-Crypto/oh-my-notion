@@ -15,8 +15,15 @@ def answer_question(
     settings: Settings,
     question: str,
     top_k: int = 5,
+    session_id: str = "default",
 ) -> str:
-    return run_agent(connection=connection, settings=settings, question=question, top_k=top_k)
+    return run_agent(
+        connection=connection,
+        settings=settings,
+        question=question,
+        top_k=top_k,
+        session_id=session_id,
+    )
 
 
 def answer_question_legacy(

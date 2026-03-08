@@ -20,6 +20,7 @@ def plan_tool_calls(
     settings: Settings | None = None,
     tool_descriptions: list[dict] | None = None,
     observations: list[dict] | None = None,
+    session_history: list[dict] | None = None,
 ) -> list[PlannedToolCall]:
     observation_items = observations or []
     if settings and tool_descriptions is not None:
@@ -28,6 +29,7 @@ def plan_tool_calls(
             settings=settings,
             tool_descriptions=tool_descriptions,
             observations=observation_items,
+            session_history=session_history or [],
             top_k=top_k,
         )
         if llm_plan is not None:
@@ -47,6 +49,24 @@ def plan_tool_calls(
                 tool_name="search_saved_links",
                 arguments={"query": question, "limit": 10},
                 reason="The user asks about saved links or online resources.",
+            )
+        ]
+
+    if any(keyword in normalized for keyword in ("之前", "刚才", "上次", "记忆", "memory", "remember")):
+        return [
+            PlannedToolCall(
+                tool_name="lookup_memory",
+                arguments={"query": question, "limit": 5},
+                reason="The user refers to prior context or saved memory.",
+            )
+        ]
+
+    if any(keyword in normalized for keyword in ("记住", "remember this", "保存这个事实")):
+        return [
+            PlannedToolCall(
+                tool_name="save_memory",
+                arguments={"content": extract_memory_content(question), "importance": 2},
+                reason="The user explicitly asks to remember something.",
             )
         ]
 
@@ -109,6 +129,7 @@ def plan_tool_calls_with_llm(
     settings: Settings,
     tool_descriptions: list[dict],
     observations: list[dict],
+    session_history: list[dict],
     top_k: int,
 ) -> list[PlannedToolCall] | None:
     client = create_openai_client(settings)
@@ -130,6 +151,7 @@ def plan_tool_calls_with_llm(
             "top_k": top_k,
             "tools": tool_descriptions,
             "observations": observations,
+            "session_history": session_history,
         },
         ensure_ascii=False,
     )
@@ -164,3 +186,12 @@ def extract_json_object(text: str) -> str:
     if start == -1 or end == -1 or end < start:
         return text
     return text[start : end + 1]
+
+
+def extract_memory_content(question: str) -> str:
+    normalized = question.strip()
+    prefixes = ("记住：", "记住:", "请记住：", "请记住:", "remember this:")
+    for prefix in prefixes:
+        if normalized.lower().startswith(prefix.lower()):
+            return normalized[len(prefix):].strip() or normalized
+    return normalized
