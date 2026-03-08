@@ -110,3 +110,14 @@ def replace_page_chunks(connection: sqlite3.Connection, page: Page, chunks: list
 
     connection.commit()
 
+
+def get_page_sync_state(connection: sqlite3.Connection, page_id: str) -> sqlite3.Row | None:
+    cursor = connection.execute(
+        """
+        SELECT id, title, last_edited_time, raw_json_path
+        FROM pages
+        WHERE id = ?
+        """,
+        (page_id,),
+    )
+    return cursor.fetchone()

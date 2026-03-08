@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Oh My Notion</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="page-shell">
+      <header class="hero">
+        <p class="eyebrow">LOCAL-FIRST NOTION AGENT</p>
+        <h1>把你的 Notion 变成一个可追溯的本地知识界面</h1>
+        <p class="hero-copy">
+          先查本地索引，再决定是否同步远端。问答、检索、来源页面都放在一个轻量前端里。
+        </p>
+        <div class="hero-actions">
+          <button id="sync-button" class="primary-button">同步 Notion</button>
+          <button id="recent-button" class="secondary-button">刷新最近页面</button>
+        </div>
+        <p id="sync-status" class="status-line">状态：等待操作</p>
+      </header>
+
+      <main class="dashboard">
+        <section class="panel panel-search">
+          <div class="panel-header">
+            <h2>Ask</h2>
+            <p>基于本地证据回答问题。</p>
+          </div>
+          <form id="ask-form" class="stack">
+            <label class="field">
+              <span>问题</span>
+              <textarea id="ask-input" rows="4" placeholder="例如：我之前关于 agent routing 写了什么？"></textarea>
+            </label>
+            <button type="submit" class="primary-button">生成回答</button>
+          </form>
+          <article id="answer-card" class="answer-card empty">
+            <p>这里会显示基于本地索引的回答。</p>
+          </article>
+        </section>
+
+        <section class="panel panel-search">
+          <div class="panel-header">
+            <h2>Search</h2>
+            <p>直接浏览命中的本地 chunk。</p>
+          </div>
+          <form id="search-form" class="inline-form">
+            <input id="search-input" type="text" placeholder="搜索关键词，例如 notion sync" />
+            <button type="submit" class="secondary-button">搜索</button>
+          </form>
+          <div id="search-results" class="results-grid"></div>
+        </section>
+
+        <section class="panel panel-sidebar">
+          <div class="panel-header">
+            <h2>Recent</h2>
+            <p>最近入库页面。</p>
+          </div>
+          <div id="recent-list" class="recent-list"></div>
+        </section>
+      </main>
+    </div>
+    <script src="/app.js"></script>
+  </body>
+</html>

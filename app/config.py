@@ -5,6 +5,18 @@ from pathlib import Path
 import os
 
 
+DEFAULT_NOTION_VERSION = "2022-06-28"
+SUPPORTED_NOTION_VERSIONS = {
+    "2021-05-11",
+    "2021-05-13",
+    "2021-08-16",
+    "2022-02-22",
+    "2022-06-28",
+    "2025-09-03",
+    "2026-03-11",
+}
+
+
 @dataclass(slots=True)
 class Settings:
     project_root: Path
@@ -15,6 +27,8 @@ class Settings:
     notion_token: str | None
     notion_root_page_id: str | None
     notion_version: str
+    openai_api_key: str | None
+    openai_model: str
 
 
 def load_settings() -> Settings:
@@ -36,7 +50,11 @@ def load_settings() -> Settings:
         db_path=db_path,
         notion_token=get_config_value("NOTION_TOKEN", env_values),
         notion_root_page_id=get_config_value("NOTION_ROOT_PAGE_ID", env_values),
-        notion_version=get_config_value("NOTION_VERSION", env_values, "2022-06-28") or "2022-06-28",
+        notion_version=normalize_notion_version(
+            get_config_value("NOTION_VERSION", env_values, DEFAULT_NOTION_VERSION)
+        ),
+        openai_api_key=get_config_value("OPENAI_API_KEY", env_values),
+        openai_model=get_config_value("OPENAI_MODEL", env_values, "gpt-4.1-mini") or "gpt-4.1-mini",
     )
 
 
@@ -64,3 +82,9 @@ def get_config_value(
     default: str | None = None,
 ) -> str | None:
     return os.getenv(key) or env_values.get(key) or default
+
+
+def normalize_notion_version(value: str | None) -> str:
+    if value in SUPPORTED_NOTION_VERSIONS:
+        return value
+    return DEFAULT_NOTION_VERSION

@@ -5,11 +5,13 @@ app/agent.py
 app/config.py
 app/db.py
 app/index.py
+app/llm.py
 app/main.py
 app/models.py
 app/notion_parser.py
 app/sync_notion.py
 app/tools.py
+app/web.py
 oh_my_notion.egg-info/PKG-INFO
 oh_my_notion.egg-info/SOURCES.txt
 oh_my_notion.egg-info/dependency_links.txt

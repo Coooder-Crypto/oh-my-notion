@@ -10,6 +10,7 @@ from app.db import connect, init_db, replace_page_chunks
 from app.models import Chunk, Page
 from app.sync_notion import sync_notion
 from app.tools import list_recent_pages, search_local_notion
+from app.web import run_server
 
 
 app = typer.Typer(no_args_is_help=True, help="Local-first Notion agent CLI.")
@@ -93,7 +94,7 @@ def ask_command(question: str, top_k: int = 5) -> None:
     settings = load_settings()
     connection = connect(settings.db_path)
     init_db(connection)
-    typer.echo(answer_question(connection, question=question, top_k=top_k))
+    typer.echo(answer_question(connection, settings=settings, question=question, top_k=top_k))
 
 
 @app.command("recent")
@@ -115,7 +116,12 @@ def sync_command() -> None:
     settings = load_settings()
     connection = connect(settings.db_path)
     init_db(connection)
-    typer.echo(sync_notion(settings, connection))
+    typer.echo(sync_notion(settings, connection, progress=typer.echo))
+
+
+@app.command("serve")
+def serve_command(host: str = "127.0.0.1", port: int = 8000) -> None:
+    run_server(host=host, port=port)
 
 
 if __name__ == "__main__":
