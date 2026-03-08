@@ -22,6 +22,15 @@
       </header>
 
       <main class="dashboard">
+        <section class="panel panel-wide panel-overview">
+          <div class="panel-header">
+            <h2>Lens</h2>
+            <p>从本地数据库直接看你的 Notion 结构、主题和内容密度。</p>
+          </div>
+          <div id="overview-metrics" class="metrics-grid"></div>
+          <div id="insight-list" class="insight-list"></div>
+        </section>
+
         <section class="panel panel-search">
           <div class="panel-header">
             <h2>Ask</h2>
@@ -57,6 +66,47 @@
             <p>最近入库页面。</p>
           </div>
           <div id="recent-list" class="recent-list"></div>
+        </section>
+
+        <section class="panel panel-wide">
+          <div class="panel-header">
+            <h2>Content Map</h2>
+            <p>页面类型、来源、活跃时间和高频主题。</p>
+          </div>
+          <div class="analysis-grid">
+            <div>
+              <h3 class="subheading">Page Kinds</h3>
+              <div id="page-kind-bars" class="bar-list"></div>
+            </div>
+            <div>
+              <h3 class="subheading">Source Types</h3>
+              <div id="source-type-bars" class="bar-list"></div>
+            </div>
+            <div>
+              <h3 class="subheading">Recent Activity</h3>
+              <div id="activity-bars" class="bar-list"></div>
+            </div>
+            <div>
+              <h3 class="subheading">Top Keywords</h3>
+              <div id="keyword-cloud" class="token-cloud"></div>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel panel-search">
+          <div class="panel-header">
+            <h2>Heavy Pages</h2>
+            <p>内容最密集的页面，适合优先检查 chunk 和结构。</p>
+          </div>
+          <div id="chunk-heavy-pages" class="results-grid"></div>
+        </section>
+
+        <section class="panel panel-sidebar">
+          <div class="panel-header">
+            <h2>Link Hubs</h2>
+            <p>链接最集中的页面，适合做外部知识入口。</p>
+          </div>
+          <div id="link-heavy-pages" class="recent-list"></div>
         </section>
       </main>
     </div>

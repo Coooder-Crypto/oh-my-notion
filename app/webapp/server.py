@@ -9,6 +9,7 @@ from urllib.parse import parse_qs, urlparse
 
 from app.agent import answer_question
 from app.core.config import load_settings
+from app.inspection.dashboard import build_dashboard_payload
 from app.notion.sync import sync_notion
 from app.retrieval.tools import list_recent_pages, search_local_notion
 from app.storage.db import connect, init_db
@@ -46,6 +47,9 @@ class OhMyNotionHandler(BaseHTTPRequestHandler):
         if parsed.path == "/api/recent":
             self._handle_recent(parsed.query)
             return
+        if parsed.path == "/api/dashboard":
+            self._handle_dashboard()
+            return
         if parsed.path == "/api/search":
             self._handle_search(parsed.query)
             return
@@ -81,6 +85,13 @@ class OhMyNotionHandler(BaseHTTPRequestHandler):
         ]
         self._send_json(payload)
 
+    def _handle_dashboard(self) -> None:
+        settings = load_settings()
+        raw_snapshots = len(list(settings.raw_dir.glob("*.json")))
+        with app_connection() as connection:
+            payload = build_dashboard_payload(connection, raw_snapshots=raw_snapshots)
+        self._send_json(payload)
+
     def _handle_search(self, query_string: str) -> None:
         params = parse_qs(query_string)
         query = params.get("q", [""])[0].strip()
@@ -101,6 +112,10 @@ class OhMyNotionHandler(BaseHTTPRequestHandler):
                 "content": result.content,
                 "url": result.url,
                 "rank": result.rank,
+                "fts_score": result.fts_score,
+                "vector_score": result.vector_score,
+                "rerank_score": result.rerank_score,
+                "retrieval_method": result.retrieval_method,
             }
             for result in results
         ]
