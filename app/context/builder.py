@@ -45,10 +45,17 @@ def context_from_search_results(results: list[SearchResult]) -> list[ContextItem
                 content=(
                     f"Heading: {result.heading or '正文'}\n"
                     f"URL: {result.url}\n"
+                    f"Retrieval Method: {result.retrieval_method}\n"
                     f"Content: {result.content}"
                 ),
                 priority=10 + index,
-                metadata={"page_id": result.page_id, "chunk_id": result.chunk_id},
+                metadata={
+                    "page_id": result.page_id,
+                    "chunk_id": result.chunk_id,
+                    "fts_score": f"{result.fts_score:.3f}" if result.fts_score else "",
+                    "vector_score": f"{result.vector_score:.3f}" if result.vector_score else "",
+                    "rerank_score": f"{result.rerank_score:.3f}" if result.rerank_score else "",
+                },
             )
         )
     return items

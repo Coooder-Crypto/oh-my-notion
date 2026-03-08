@@ -6,11 +6,13 @@ It is designed as a learning project for agent development:
 - local-first retrieval before any remote model call
 - grounded answers based on retrieved Notion evidence
 - optional OpenAI summarization layer on top of local search
+- hybrid retrieval with FTS + local semantic embeddings + rerank
 
 ## Current Scope
 
 - Local SQLite storage
 - SQLite FTS5 full-text search
+- Local embedding index for semantic retrieval
 - Local-first agent flow
 - CLI entrypoint for `init-db`, `ingest-sample`, `search`, `ask`, `sync`, `reindex`, and `serve`
 - Real Notion sync for pages, child pages, and database entries
@@ -98,6 +100,7 @@ oh-my-notion reindex
 ```
 
 This rebuilds the local SQLite index from `data/raw/*.json`.
+It also regenerates chunk embeddings for hybrid retrieval.
 
 You can also rebuild only matching raw files:
 
@@ -115,6 +118,22 @@ oh-my-notion inspect-page <page-id-or-file>
 oh-my-notion inspect-chunks <page-id-or-file>
 oh-my-notion inspect-links <page-id-or-file>
 oh-my-notion stats
+```
+
+## Hybrid RAG
+
+The project now uses a lightweight Hybrid RAG pipeline:
+
+- FTS5 for keyword recall
+- local hashed embeddings for semantic recall
+- score merge + rerank before answer generation
+
+This keeps the system fully local by default. Rebuild the index once after upgrading:
+
+```bash
+oh-my-notion reindex
+oh-my-notion search "agent routing"
+oh-my-notion ask "我关于 agent routing 的笔记写了什么？"
 ```
 
 ## Suggested Next Steps

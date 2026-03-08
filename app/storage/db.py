@@ -3,6 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 import sqlite3
 
+from app.retrieval.embeddings import embed_text_local
+from app.retrieval.hybrid import encode_vector
 from app.storage.models import Chunk, Page
 
 
@@ -58,6 +60,18 @@ SCHEMA_STATEMENTS = (
         content TEXT NOT NULL,
         importance INTEGER NOT NULL DEFAULT 1,
         created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS chunk_embeddings (
+        chunk_id TEXT PRIMARY KEY,
+        page_id TEXT NOT NULL,
+        embedding_provider TEXT NOT NULL,
+        embedding_dimensions INTEGER NOT NULL,
+        vector TEXT NOT NULL,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY(chunk_id) REFERENCES chunks(chunk_id),
+        FOREIGN KEY(page_id) REFERENCES pages(id)
     )
     """,
 )
@@ -124,6 +138,7 @@ def replace_page_chunks(connection: sqlite3.Connection, page: Page, chunks: list
     upsert_page(connection, page)
     connection.execute("DELETE FROM chunks WHERE page_id = ?", (page.id,))
     connection.execute("DELETE FROM chunks_fts WHERE page_id = ?", (page.id,))
+    connection.execute("DELETE FROM chunk_embeddings WHERE page_id = ?", (page.id,))
 
     for chunk in chunks:
         connection.execute(
@@ -147,6 +162,27 @@ def replace_page_chunks(connection: sqlite3.Connection, page: Page, chunks: list
             """,
             (chunk.chunk_id, chunk.page_id, page.title, chunk.heading, chunk.content),
         )
+        embedding_input = f"{page.title}\n{chunk.heading}\n{chunk.content}".strip()
+        vector = embed_text_local(embedding_input)
+        connection.execute(
+            """
+            INSERT INTO chunk_embeddings (
+                chunk_id,
+                page_id,
+                embedding_provider,
+                embedding_dimensions,
+                vector
+            )
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (
+                chunk.chunk_id,
+                chunk.page_id,
+                "local-hash",
+                len(vector),
+                encode_vector(vector),
+            ),
+        )
 
     connection.commit()
 
@@ -166,6 +202,7 @@ def get_page_sync_state(connection: sqlite3.Connection, page_id: str) -> sqlite3
 def reset_index(connection: sqlite3.Connection) -> None:
     connection.execute("DELETE FROM chunks")
     connection.execute("DELETE FROM chunks_fts")
+    connection.execute("DELETE FROM chunk_embeddings")
     connection.execute("DELETE FROM pages")
     connection.commit()
 
@@ -217,6 +254,9 @@ def maybe_add_pages_column(
 def get_stats(connection: sqlite3.Connection) -> dict[str, int]:
     pages_count = connection.execute("SELECT COUNT(*) AS count FROM pages").fetchone()["count"]
     chunks_count = connection.execute("SELECT COUNT(*) AS count FROM chunks").fetchone()["count"]
+    embeddings_count = connection.execute(
+        "SELECT COUNT(*) AS count FROM chunk_embeddings"
+    ).fetchone()["count"]
     empty_pages = connection.execute(
         "SELECT COUNT(*) AS count FROM pages WHERE page_kind = 'empty'"
     ).fetchone()["count"]
@@ -238,6 +278,7 @@ def get_stats(connection: sqlite3.Connection) -> dict[str, int]:
     return {
         "pages": pages_count,
         "chunks": chunks_count,
+        "embeddings": embeddings_count,
         "empty_pages": empty_pages,
         "container_pages": container_pages,
         "content_pages": content_pages,

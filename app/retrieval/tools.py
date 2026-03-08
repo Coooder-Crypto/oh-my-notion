@@ -5,7 +5,7 @@ import sqlite3
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
-from app.retrieval.index import search_chunks
+from app.retrieval.hybrid import search_chunks_hybrid
 from app.storage.models import SearchResult
 
 
@@ -14,7 +14,7 @@ def search_local_notion(
     query: str,
     top_k: int = 5,
 ) -> list[SearchResult]:
-    return search_chunks(connection=connection, query=query, top_k=top_k)
+    return search_chunks_hybrid(connection=connection, query=query, top_k=top_k)
 
 
 def list_recent_pages(connection: sqlite3.Connection, limit: int = 10) -> list[sqlite3.Row]:

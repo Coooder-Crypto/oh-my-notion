@@ -28,7 +28,7 @@ def build_tool_registry(
     return {
         "search_local_notion": ToolDefinition(
             name="search_local_notion",
-            description="Search local notion chunks by query and return top-k evidence.",
+            description="Search local notion chunks with hybrid retrieval (FTS + semantic vector search) and return top-k reranked evidence.",
             handler=lambda query, top_k=5: search_local_notion(connection, query=query, top_k=top_k),
         ),
         "list_recent_pages": ToolDefinition(

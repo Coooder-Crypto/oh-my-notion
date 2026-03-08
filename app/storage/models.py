@@ -36,3 +36,7 @@ class SearchResult:
     content: str
     url: str
     rank: float
+    fts_score: float = 0.0
+    vector_score: float = 0.0
+    rerank_score: float = 0.0
+    retrieval_method: str = "fts"

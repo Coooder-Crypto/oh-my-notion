@@ -93,6 +93,13 @@ def search_command(query: str, top_k: int = 5) -> None:
 
     for index, result in enumerate(results, start=1):
         typer.echo(f"{index}. {result.title} | {result.heading}")
+        typer.echo(
+            "   "
+            f"method={result.retrieval_method} "
+            f"rerank={result.rerank_score:.3f} "
+            f"fts={result.fts_score:.3f} "
+            f"vector={result.vector_score:.3f}"
+        )
         typer.echo(f"   {result.content}")
         typer.echo(f"   {result.url}")
 
