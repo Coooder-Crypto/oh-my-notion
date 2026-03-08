@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from pathlib import Path
 
 import typer
 
 from app.agent import answer_question
 from app.core.config import load_settings
+from app.evaluation.agent import evaluate_agent_routing
+from app.evaluation.retrieval import evaluate_retrieval
 from app.inspection.inspectors import (
     inspect_chunks_snapshot,
     inspect_links_snapshot,
@@ -22,6 +25,14 @@ from app.webapp.server import run_server
 
 
 app = typer.Typer(no_args_is_help=True, help="Local-first Notion agent CLI.")
+
+
+def default_eval_dataset_path() -> str:
+    settings = load_settings()
+    project_root = settings.project_root
+    if project_root.name == "app":
+        project_root = project_root.parent
+    return str(project_root / "eval" / "questions.jsonl")
 
 
 @app.command("init-db")
@@ -190,6 +201,42 @@ def stats_command() -> None:
     typer.echo(f"raw_snapshots: {raw_files}")
     for key, value in stats.items():
         typer.echo(f"{key}: {value}")
+
+
+@app.command("eval-retrieval")
+def eval_retrieval_command(
+    dataset: str = typer.Option(default_eval_dataset_path(), help="Path to eval questions jsonl."),
+    top_k: int = 5,
+) -> None:
+    settings = load_settings()
+    connection = connect(settings.db_path)
+    init_db(connection)
+    report, _rows = evaluate_retrieval(connection, dataset_path=Path(dataset), top_k=top_k)
+    typer.echo(report)
+
+
+@app.command("eval-agent")
+def eval_agent_command(
+    dataset: str = typer.Option(default_eval_dataset_path(), help="Path to eval questions jsonl."),
+) -> None:
+    report, _rows = evaluate_agent_routing(dataset_path=Path(dataset))
+    typer.echo(report)
+
+
+@app.command("eval-all")
+def eval_all_command(
+    dataset: str = typer.Option(default_eval_dataset_path(), help="Path to eval questions jsonl."),
+    top_k: int = 5,
+) -> None:
+    settings = load_settings()
+    connection = connect(settings.db_path)
+    init_db(connection)
+    dataset_path = Path(dataset)
+    retrieval_report, _ = evaluate_retrieval(connection, dataset_path=dataset_path, top_k=top_k)
+    agent_report, _ = evaluate_agent_routing(dataset_path=dataset_path)
+    typer.echo(retrieval_report)
+    typer.echo("")
+    typer.echo(agent_report)
 
 
 @app.command("serve")

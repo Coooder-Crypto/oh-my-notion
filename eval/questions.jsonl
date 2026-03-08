@@ -1,0 +1,8 @@
+{"id":"retrieval-agent-routing","question":"agent routing","expected_pages":["sample-agent-routing"],"tags":["retrieval","hybrid"]}
+{"id":"retrieval-local-first","question":"local-first policy reduces latency","expected_pages":["sample-agent-routing"],"tags":["retrieval","hybrid"]}
+{"id":"retrieval-evidence-policy","question":"insufficient evidence guessing","expected_pages":["sample-agent-routing"],"tags":["retrieval","hybrid"]}
+{"id":"agent-recent-pages","question":"最近的页面有哪些？","expected_tools":["list_recent_pages"],"tags":["agent","tools"]}
+{"id":"agent-save-memory","question":"记住：我在准备 Agent 岗位面试","expected_tools":["save_memory"],"tags":["agent","memory"]}
+{"id":"agent-lookup-memory","question":"之前我让我记住了什么？","expected_tools":["lookup_memory"],"tags":["agent","memory"]}
+{"id":"agent-search-links","question":"我保存过哪些链接？","expected_tools":["search_saved_links"],"tags":["agent","links"]}
+{"id":"agent-default-search","question":"agent routing 的笔记写了什么？","expected_tools":["search_local_notion"],"tags":["agent","search"]}

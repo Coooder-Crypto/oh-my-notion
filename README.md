@@ -19,6 +19,7 @@ It is designed as a learning project for agent development:
 - Lightweight web frontend served by Python
 - Optional OpenAI API integration for grounded answer generation
 - Local inspection commands for raw snapshots, parsed pages, chunks, links, and stats
+- Local eval commands for retrieval and agent tool routing
 
 ## Quick Start
 
@@ -119,6 +120,28 @@ oh-my-notion inspect-chunks <page-id-or-file>
 oh-my-notion inspect-links <page-id-or-file>
 oh-my-notion stats
 ```
+
+## Eval
+
+Use the built-in eval dataset or provide your own JSONL file:
+
+```bash
+oh-my-notion eval-retrieval
+oh-my-notion eval-agent
+oh-my-notion eval-all
+```
+
+Default dataset location:
+
+```text
+eval/questions.jsonl
+```
+
+Each JSONL item can include:
+
+- `question`
+- `expected_pages`
+- `expected_tools`
 
 ## Hybrid RAG
 
