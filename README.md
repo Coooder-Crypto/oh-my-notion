@@ -16,6 +16,7 @@ It is designed as a learning project for agent development:
 - Real Notion sync for pages, child pages, and database entries
 - Lightweight web frontend served by Python
 - Optional OpenAI API integration for grounded answer generation
+- Local inspection commands for raw snapshots, parsed pages, chunks, links, and stats
 
 ## Quick Start
 
@@ -97,6 +98,24 @@ oh-my-notion reindex
 ```
 
 This rebuilds the local SQLite index from `data/raw/*.json`.
+
+You can also rebuild only matching raw files:
+
+```bash
+oh-my-notion reindex notes
+```
+
+## Local Analysis Commands
+
+These commands help inspect local data without calling Notion again:
+
+```bash
+oh-my-notion inspect-raw <page-id-or-file>
+oh-my-notion inspect-page <page-id-or-file>
+oh-my-notion inspect-chunks <page-id-or-file>
+oh-my-notion inspect-links <page-id-or-file>
+oh-my-notion stats
+```
 
 ## Suggested Next Steps
 

@@ -22,6 +22,7 @@ class Settings:
     project_root: Path
     data_dir: Path
     raw_dir: Path
+    raw_cache_dir: Path
     db_dir: Path
     db_path: Path
     notion_token: str | None
@@ -36,6 +37,7 @@ def load_settings() -> Settings:
     env_values = load_env_file(project_root / ".env")
     data_dir = project_root / "data"
     raw_dir = data_dir / "raw"
+    raw_cache_dir = raw_dir / "_block_cache"
     db_dir = data_dir / "db"
     default_db_path = db_dir / "oh_my_notion.sqlite3"
     db_path = Path(
@@ -46,6 +48,7 @@ def load_settings() -> Settings:
         project_root=project_root,
         data_dir=data_dir,
         raw_dir=raw_dir,
+        raw_cache_dir=raw_cache_dir,
         db_dir=db_dir,
         db_path=db_path,
         notion_token=get_config_value("NOTION_TOKEN", env_values),

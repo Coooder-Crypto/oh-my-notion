@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import http.client
 import json
 from pathlib import Path
 import socket
@@ -32,6 +33,8 @@ class SyncStats:
     page_failures: int = 0
     block_failures: int = 0
     database_failures: int = 0
+    block_cache_hits: int = 0
+    block_cache_writes: int = 0
 
 
 class NotionClient:
@@ -127,6 +130,18 @@ class NotionClient:
                     self._sleep_before_retry(path, attempt, f"URLError: {exc.reason}")
                     continue
                 raise RuntimeError(f"Unable to reach Notion API for {path}: {exc.reason}") from exc
+            except (
+                http.client.RemoteDisconnected,
+                ConnectionResetError,
+                ConnectionAbortedError,
+                TimeoutError,
+            ) as exc:
+                if attempt < MAX_REQUEST_RETRIES:
+                    self._sleep_before_retry(path, attempt, type(exc).__name__)
+                    continue
+                raise RuntimeError(
+                    f"Connection dropped while requesting {path}: {exc}"
+                ) from exc
 
         raise RuntimeError(f"Notion API request failed after retries for {path}")
 
@@ -174,7 +189,8 @@ def sync_notion(
         f"indexed {stats.pages_indexed} pages, skipped {stats.pages_skipped} unchanged pages, "
         f"indexed {stats.chunks_indexed} chunks, wrote {stats.raw_files_written} raw files, "
         f"page failures={stats.page_failures}, database failures={stats.database_failures}, "
-        f"block failures={stats.block_failures}."
+        f"block failures={stats.block_failures}, block cache hits={stats.block_cache_hits}, "
+        f"block cache writes={stats.block_cache_writes}."
     )
 
 
@@ -202,7 +218,7 @@ def sync_page_tree(
         if page_id == settings.notion_root_page_id:
             raise
         return
-    page = build_page(page_data, raw_json_path=None)
+    page = build_page(page_data, raw_json_path=None, block_tree=[])
     sync_state = get_page_sync_state(connection, page_id)
     cached_payload = load_cached_payload(sync_state)
     is_unchanged = (
@@ -214,6 +230,9 @@ def sync_page_tree(
     if is_unchanged:
         block_tree = cached_payload.get("blocks", [])
         page.raw_json_path = sync_state["raw_json_path"]
+        page.page_kind = sync_state["page_kind"]
+        page.child_count = sync_state["child_count"]
+        page.link_count = sync_state["link_count"]
         stats.pages_skipped += 1
         progress(
             f"[page] skip unchanged {page.title or page_id} "
@@ -222,7 +241,14 @@ def sync_page_tree(
     else:
         progress(f"[page] indexing {page.title or page_id}")
         try:
-            block_tree = fetch_block_tree(client, page_id, progress=progress, stats=stats)
+            cache_namespace = build_cache_namespace(page.id, page.last_edited_time)
+            block_tree = fetch_block_tree(
+                client,
+                page_id,
+                progress=progress,
+                stats=stats,
+                cache_dir=settings.raw_cache_dir / cache_namespace,
+            )
         except RuntimeError as exc:
             stats.page_failures += 1
             progress(f"[page] failed blocks {page.title or page_id}: {exc}")
@@ -234,7 +260,7 @@ def sync_page_tree(
             object_id=page_id,
             payload={"page": page_data, "blocks": block_tree},
         )
-        page.raw_json_path = str(raw_json_path)
+        page = build_page(page_data, raw_json_path=str(raw_json_path), block_tree=block_tree)
         chunks = build_chunks(page, block_tree)
         replace_page_chunks(connection, page, chunks)
         stats.pages_indexed += 1
@@ -332,10 +358,21 @@ def fetch_block_tree(
     block_id: str,
     progress: Callable[[str], None],
     stats: SyncStats,
+    cache_dir: Path,
     depth: int = 0,
 ) -> list[dict[str, Any]]:
-    progress(f"[blocks] depth={depth} loading children for {block_id}")
-    children = client.get_block_children(block_id)
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    cached_children = load_cached_block_children(cache_dir, block_id)
+    if cached_children is not None:
+        stats.block_cache_hits += 1
+        progress(f"[blocks] depth={depth} cache hit for {block_id}")
+        children = cached_children
+    else:
+        progress(f"[blocks] depth={depth} loading children for {block_id}")
+        children = client.get_block_children(block_id)
+        write_cached_block_children(cache_dir, block_id, children)
+        stats.block_cache_writes += 1
+        progress(f"[blocks] depth={depth} cached {len(children)} children for {block_id}")
     progress(f"[blocks] depth={depth} loaded {len(children)} children for {block_id}")
     for child in children:
         if child.get("has_children"):
@@ -349,6 +386,7 @@ def fetch_block_tree(
                     child["id"],
                     progress=progress,
                     stats=stats,
+                    cache_dir=cache_dir,
                     depth=depth + 1,
                 )
             except RuntimeError as exc:
@@ -393,6 +431,37 @@ def load_cached_payload(sync_state: Any) -> dict[str, Any] | None:
         return json.loads(path.read_text(encoding="utf-8"))
     except json.JSONDecodeError:
         return None
+
+
+def build_cache_namespace(page_id: str, last_edited_time: str) -> str:
+    safe_revision = (
+        last_edited_time.replace(":", "-")
+        .replace("+", "_")
+        .replace("/", "_")
+    )
+    return f"{page_id}_{safe_revision}"
+
+
+def block_cache_path(cache_dir: Path, block_id: str) -> Path:
+    return cache_dir / f"{block_id}.json"
+
+
+def load_cached_block_children(cache_dir: Path, block_id: str) -> list[dict[str, Any]] | None:
+    path = block_cache_path(cache_dir, block_id)
+    if not path.exists():
+        return None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if isinstance(payload, list):
+        return payload
+    return None
+
+
+def write_cached_block_children(cache_dir: Path, block_id: str, children: list[dict[str, Any]]) -> None:
+    path = block_cache_path(cache_dir, block_id)
+    path.write_text(json.dumps(children, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
 def is_retryable_url_error(exc: URLError) -> bool:

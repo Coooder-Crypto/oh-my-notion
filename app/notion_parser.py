@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Any
 
 from app.cleaner import normalize_block_text, should_skip_block
@@ -21,9 +22,23 @@ SUPPORTED_RICH_TEXT_TYPES = {
 }
 
 HEADING_TYPES = {"heading_1", "heading_2", "heading_3"}
+LIST_TYPES = {"bulleted_list_item", "numbered_list_item", "to_do"}
 
 
-def build_page(page_data: dict[str, Any], raw_json_path: str | None) -> Page:
+@dataclass(slots=True)
+class TextUnit:
+    kind: str
+    heading_path: str
+    text: str
+    link_count: int
+
+
+def build_page(
+    page_data: dict[str, Any],
+    raw_json_path: str | None,
+    block_tree: list[dict[str, Any]] | None = None,
+) -> Page:
+    effective_blocks = block_tree or []
     return Page(
         id=page_data["id"],
         title=extract_page_title(page_data),
@@ -31,61 +46,100 @@ def build_page(page_data: dict[str, Any], raw_json_path: str | None) -> Page:
         source_type=page_data.get("parent", {}).get("type", "page"),
         created_time=page_data.get("created_time", ""),
         last_edited_time=page_data.get("last_edited_time", ""),
+        page_kind=classify_page_kind(effective_blocks),
+        child_count=count_child_blocks(effective_blocks),
+        link_count=len(extract_links_from_block_tree(effective_blocks)),
         raw_json_path=raw_json_path,
     )
 
 
-def build_chunks(page: Page, block_tree: list[dict[str, Any]], chunk_size: int = 800) -> list[Chunk]:
+def build_chunks(
+    page: Page,
+    block_tree: list[dict[str, Any]],
+    chunk_size: int = 800,
+    overlap_units: int = 1,
+) -> list[Chunk]:
+    units = build_text_units(block_tree)
+    if not units:
+        return []
+
     chunks: list[Chunk] = []
-    heading_stack = {"heading_1": "", "heading_2": "", "heading_3": ""}
-    buffer: list[str] = []
+    buffer_units: list[TextUnit] = []
     current_length = 0
     chunk_index = 0
+    current_heading = units[0].heading_path
 
-    def flush_buffer() -> None:
-        nonlocal buffer, current_length, chunk_index
-        content = "\n".join(part for part in buffer if part.strip()).strip()
+    def flush_buffer(preserve_overlap: bool) -> None:
+        nonlocal buffer_units, current_length, chunk_index
+        content = "\n".join(unit.text for unit in buffer_units if unit.text.strip()).strip()
         if not content:
-            buffer = []
+            buffer_units = []
             current_length = 0
             return
-        heading = build_heading_path(heading_stack)
         chunks.append(
             Chunk(
                 chunk_id=f"{page.id}-{chunk_index}",
                 page_id=page.id,
-                heading=heading,
+                heading=current_heading,
                 content=content,
                 position=chunk_index,
                 token_count=estimate_token_count(content),
             )
         )
         chunk_index += 1
-        buffer = []
-        current_length = 0
+        if preserve_overlap and overlap_units > 0:
+            overlap = buffer_units[-overlap_units:]
+            buffer_units = overlap[:]
+            current_length = sum(len(unit.text) for unit in buffer_units)
+        else:
+            buffer_units = []
+            current_length = 0
+
+    for unit in units:
+        if unit.heading_path != current_heading and buffer_units:
+            flush_buffer(preserve_overlap=False)
+            current_heading = unit.heading_path
+
+        if unit.heading_path != current_heading:
+            current_heading = unit.heading_path
+
+        if current_length + len(unit.text) > chunk_size and buffer_units:
+            flush_buffer(preserve_overlap=True)
+            current_heading = unit.heading_path
+
+        buffer_units.append(unit)
+        current_length += len(unit.text)
+
+    flush_buffer(preserve_overlap=False)
+    return deduplicate_chunks(chunks)
+
+
+def build_text_units(block_tree: list[dict[str, Any]]) -> list[TextUnit]:
+    heading_stack = {"heading_1": "", "heading_2": "", "heading_3": ""}
+    raw_units: list[TextUnit] = []
 
     for block in flatten_blocks(block_tree):
         block_type = block.get("type", "")
         text = extract_block_text(block)
         if block_type in HEADING_TYPES:
-            flush_buffer()
             update_heading_stack(heading_stack, block_type, text)
-            if text:
-                buffer.append(text)
-                current_length += len(text)
             continue
 
         if should_skip_block(block_type, text):
             continue
 
-        if current_length + len(text) > chunk_size and buffer:
-            flush_buffer()
+        heading_path = build_heading_path(heading_stack)
+        raw_units.append(
+            TextUnit(
+                kind=block_type,
+                heading_path=heading_path,
+                text=text,
+                link_count=count_links_in_block(block),
+            )
+        )
 
-        buffer.append(text)
-        current_length += len(text)
-
-    flush_buffer()
-    return chunks
+    grouped_units = merge_list_units(raw_units)
+    return merge_short_units(grouped_units)
 
 
 def flatten_blocks(blocks: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -95,6 +149,19 @@ def flatten_blocks(blocks: list[dict[str, Any]]) -> list[dict[str, Any]]:
         children = block.get("_children", [])
         if children:
             flattened.extend(flatten_blocks(children))
+    return flattened
+
+
+def flatten_blocks_with_depth(
+    blocks: list[dict[str, Any]],
+    depth: int = 0,
+) -> list[tuple[int, dict[str, Any]]]:
+    flattened: list[tuple[int, dict[str, Any]]] = []
+    for block in blocks:
+        flattened.append((depth, block))
+        children = block.get("_children", [])
+        if children:
+            flattened.extend(flatten_blocks_with_depth(children, depth=depth + 1))
     return flattened
 
 
@@ -168,3 +235,118 @@ def extract_rich_text_href(part: dict[str, Any]) -> str | None:
         return url
 
     return None
+
+
+def extract_links_from_block_tree(block_tree: list[dict[str, Any]]) -> list[str]:
+    links: list[str] = []
+    for block in flatten_blocks(block_tree):
+        links.extend(extract_links_from_rich_text_for_block(block))
+    return links
+
+
+def extract_links_from_rich_text_for_block(block: dict[str, Any]) -> list[str]:
+    block_type = block.get("type", "")
+    if block_type not in SUPPORTED_RICH_TEXT_TYPES:
+        return []
+    payload = block.get(block_type, {})
+    links: list[str] = []
+    for part in payload.get("rich_text", []):
+        href = extract_rich_text_href(part)
+        if href:
+            links.append(href)
+    return links
+
+
+def count_links_in_block(block: dict[str, Any]) -> int:
+    return len(extract_links_from_rich_text_for_block(block))
+
+
+def count_child_blocks(block_tree: list[dict[str, Any]]) -> int:
+    return sum(
+        1
+        for block in flatten_blocks(block_tree)
+        if block.get("type") in {"child_page", "child_database"}
+    )
+
+
+def classify_page_kind(block_tree: list[dict[str, Any]]) -> str:
+    if not block_tree:
+        return "empty"
+
+    has_content = False
+    has_child = False
+    for block in flatten_blocks(block_tree):
+        block_type = block.get("type", "")
+        if block_type in {"child_page", "child_database"}:
+            has_child = True
+            continue
+        text = extract_block_text(block)
+        if should_skip_block(block_type, text):
+            continue
+        has_content = True
+
+    if has_content:
+        return "content"
+    if has_child:
+        return "container"
+    return "empty"
+
+
+def merge_list_units(units: list[TextUnit]) -> list[TextUnit]:
+    if not units:
+        return []
+    merged: list[TextUnit] = []
+    for unit in units:
+        if (
+            merged
+            and unit.kind in LIST_TYPES
+            and merged[-1].kind == unit.kind
+            and merged[-1].heading_path == unit.heading_path
+        ):
+            merged[-1] = TextUnit(
+                kind="list_group",
+                heading_path=merged[-1].heading_path,
+                text=f"{merged[-1].text}\n{unit.text}",
+                link_count=merged[-1].link_count + unit.link_count,
+            )
+            continue
+        merged.append(unit)
+    return merged
+
+
+def merge_short_units(units: list[TextUnit], max_merged_length: int = 260) -> list[TextUnit]:
+    if not units:
+        return []
+    merged: list[TextUnit] = []
+    for unit in units:
+        if (
+            merged
+            and merged[-1].heading_path == unit.heading_path
+            and merged[-1].kind not in HEADING_TYPES
+            and unit.kind not in HEADING_TYPES
+            and len(merged[-1].text) < 120
+            and len(unit.text) < 120
+            and len(merged[-1].text) + len(unit.text) < max_merged_length
+            and not (merged[-1].kind == "code" and unit.kind == "code")
+        ):
+            merged[-1] = TextUnit(
+                kind=merged[-1].kind,
+                heading_path=merged[-1].heading_path,
+                text=f"{merged[-1].text}\n{unit.text}",
+                link_count=merged[-1].link_count + unit.link_count,
+            )
+            continue
+        merged.append(unit)
+    return merged
+
+
+def deduplicate_chunks(chunks: list[Chunk]) -> list[Chunk]:
+    deduped: list[Chunk] = []
+    seen: set[tuple[str, str]] = set()
+    for chunk in chunks:
+        key = (chunk.heading, chunk.content)
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(chunk)
+    return deduped

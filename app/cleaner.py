@@ -14,6 +14,14 @@ MEANINGLESS_TEXT = {
 }
 
 SKIP_BLOCK_TYPES = {"child_page", "child_database", "divider", "breadcrumb", "table_of_contents"}
+TEMPLATE_FIELD_PATTERN = re.compile(
+    r"^(status|owner|priority|tags?|deadline|due date|created|updated|author|reviewer):\s*$",
+    re.IGNORECASE,
+)
+DIRECTORY_NOISE_PATTERN = re.compile(
+    r"^(backlinks?|related pages?|table of contents|quick links?|navigation)$",
+    re.IGNORECASE,
+)
 
 
 def clean_text(text: str) -> str:
@@ -45,6 +53,10 @@ def should_skip_block(block_type: str, text: str) -> bool:
     compact = " ".join(text.split()).strip().lower()
     if compact in MEANINGLESS_TEXT:
         return True
+    if TEMPLATE_FIELD_PATTERN.match(compact):
+        return True
+    if DIRECTORY_NOISE_PATTERN.match(compact):
+        return True
     if len(compact) <= 2 and compact not in {"ai", "ui", "db"}:
         return True
     return False
@@ -67,4 +79,3 @@ def normalize_block_text(block_type: str, text: str, checked: bool | None = None
     if block_type == "numbered_list_item":
         return f"1. {cleaned}"
     return cleaned
-

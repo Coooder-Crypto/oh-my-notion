@@ -12,11 +12,14 @@ def rebuild_index_from_raw(
     raw_dir: Path,
     connection,
     progress: Callable[[str], None] | None = None,
+    target: str | None = None,
 ) -> str:
     reporter = progress or (lambda _message: None)
     init_db(connection)
 
     raw_files = sorted(raw_dir.glob("*.json"))
+    if target:
+        raw_files = [path for path in raw_files if target in path.stem or target in path.name]
     page_snapshots = []
     for raw_file in raw_files:
         payload = load_payload(raw_file)

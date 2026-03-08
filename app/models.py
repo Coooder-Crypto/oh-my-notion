@@ -11,6 +11,9 @@ class Page:
     source_type: str
     created_time: str
     last_edited_time: str
+    page_kind: str = "content"
+    child_count: int = 0
+    link_count: int = 0
     raw_json_path: str | None = None
 
 
@@ -33,4 +36,3 @@ class SearchResult:
     content: str
     url: str
     rank: float
-

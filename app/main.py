@@ -6,7 +6,14 @@ import typer
 
 from app.agent import answer_question
 from app.config import load_settings
-from app.db import connect, init_db, replace_page_chunks
+from app.db import connect, get_stats, init_db, replace_page_chunks
+from app.inspect import (
+    inspect_chunks_snapshot,
+    inspect_links_snapshot,
+    inspect_page_snapshot,
+    inspect_raw_snapshot,
+    resolve_raw_target,
+)
 from app.models import Chunk, Page
 from app.reindex import rebuild_index_from_raw
 from app.sync_notion import sync_notion
@@ -121,11 +128,53 @@ def sync_command() -> None:
 
 
 @app.command("reindex")
-def reindex_command() -> None:
+def reindex_command(target: str | None = None) -> None:
     settings = load_settings()
     connection = connect(settings.db_path)
     init_db(connection)
-    typer.echo(rebuild_index_from_raw(settings.raw_dir, connection, progress=typer.echo))
+    typer.echo(
+        rebuild_index_from_raw(settings.raw_dir, connection, progress=typer.echo, target=target)
+    )
+
+
+@app.command("inspect-raw")
+def inspect_raw_command(target: str, limit: int = 80) -> None:
+    settings = load_settings()
+    raw_path = resolve_raw_target(settings.raw_dir, target)
+    typer.echo(inspect_raw_snapshot(raw_path, limit=limit))
+
+
+@app.command("inspect-page")
+def inspect_page_command(target: str) -> None:
+    settings = load_settings()
+    raw_path = resolve_raw_target(settings.raw_dir, target)
+    typer.echo(inspect_page_snapshot(raw_path))
+
+
+@app.command("inspect-chunks")
+def inspect_chunks_command(target: str) -> None:
+    settings = load_settings()
+    raw_path = resolve_raw_target(settings.raw_dir, target)
+    typer.echo(inspect_chunks_snapshot(raw_path))
+
+
+@app.command("inspect-links")
+def inspect_links_command(target: str) -> None:
+    settings = load_settings()
+    raw_path = resolve_raw_target(settings.raw_dir, target)
+    typer.echo(inspect_links_snapshot(raw_path))
+
+
+@app.command("stats")
+def stats_command() -> None:
+    settings = load_settings()
+    connection = connect(settings.db_path)
+    init_db(connection)
+    stats = get_stats(connection)
+    raw_files = len(list(settings.raw_dir.glob("*.json")))
+    typer.echo(f"raw_snapshots: {raw_files}")
+    for key, value in stats.items():
+        typer.echo(f"{key}: {value}")
 
 
 @app.command("serve")
