@@ -10,6 +10,7 @@ from app.notion.parser import (
     classify_page_kind,
     extract_block_text,
     extract_links_from_block_tree,
+    extract_saved_links,
     flatten_blocks_with_depth,
 )
 from app.storage.cleaner import clean_text
@@ -102,10 +103,16 @@ def inspect_links_snapshot(raw_path: Path) -> str:
     page_data = payload["page"]
     blocks = payload["blocks"]
     page = build_page(page_data, str(raw_path), blocks)
-    links = extract_links_from_block_tree(blocks)
-    if not links:
+    saved_links = extract_saved_links(page, blocks, build_chunks(page, blocks))
+    if not saved_links:
         return f"{page.title}: no links found"
-    unique_links = list(dict.fromkeys(links))
-    lines = [f"title: {page.title}", f"links: {len(unique_links)}", ""]
-    lines.extend(unique_links)
+    lines = [f"title: {page.title}", f"links: {len(saved_links)}", ""]
+    for link in saved_links:
+        lines.append(f"- {link.anchor_text or '(no anchor)'}")
+        lines.append(f"  url: {link.url}")
+        lines.append(f"  domain: {link.domain}")
+        lines.append(f"  heading: {link.heading or 'ROOT'}")
+        if link.context_snippet:
+            lines.append(f"  context: {link.context_snippet[:180]}")
+        lines.append("")
     return "\n".join(lines)

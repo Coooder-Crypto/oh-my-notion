@@ -47,44 +47,71 @@ def search_saved_links(connection: sqlite3.Connection, query: str, limit: int = 
     if normalized_query:
         rows = connection.execute(
             """
-            SELECT pages.id AS page_id, pages.title AS title, pages.url AS page_url, chunks.heading AS heading, chunks.content AS content
-            FROM chunks
-            JOIN pages ON pages.id = chunks.page_id
-            WHERE chunks.content LIKE ?
+            SELECT
+                saved_links.page_id AS page_id,
+                saved_links.page_title AS title,
+                pages.url AS page_url,
+                saved_links.heading AS heading,
+                saved_links.url AS url,
+                saved_links.anchor_text AS anchor_text,
+                saved_links.domain AS domain,
+                saved_links.context_snippet AS snippet
+            FROM saved_links
+            JOIN pages ON pages.id = saved_links.page_id
+            WHERE
+                saved_links.anchor_text LIKE ?
+                OR saved_links.url LIKE ?
+                OR saved_links.domain LIKE ?
+                OR saved_links.context_snippet LIKE ?
+                OR saved_links.page_title LIKE ?
+                OR saved_links.heading LIKE ?
             ORDER BY pages.last_edited_time DESC
             LIMIT ?
             """,
-            (f"%{normalized_query}%", limit),
+            (
+                f"%{normalized_query}%",
+                f"%{normalized_query}%",
+                f"%{normalized_query}%",
+                f"%{normalized_query}%",
+                f"%{normalized_query}%",
+                f"%{normalized_query}%",
+                limit,
+            ),
         ).fetchall()
     else:
         rows = connection.execute(
             """
-            SELECT pages.id AS page_id, pages.title AS title, pages.url AS page_url, chunks.heading AS heading, chunks.content AS content
-            FROM chunks
-            JOIN pages ON pages.id = chunks.page_id
-            WHERE chunks.content LIKE '%http://%' OR chunks.content LIKE '%https://%'
+            SELECT
+                saved_links.page_id AS page_id,
+                saved_links.page_title AS title,
+                pages.url AS page_url,
+                saved_links.heading AS heading,
+                saved_links.url AS url,
+                saved_links.anchor_text AS anchor_text,
+                saved_links.domain AS domain,
+                saved_links.context_snippet AS snippet
+            FROM saved_links
+            JOIN pages ON pages.id = saved_links.page_id
             ORDER BY pages.last_edited_time DESC
             LIMIT ?
             """,
             (limit,),
         ).fetchall()
 
-    results: list[dict] = []
-    for row in rows:
-        links = extract_links(row["content"])
-        if not links:
-            continue
-        results.append(
-            {
-                "page_id": row["page_id"],
-                "title": row["title"],
-                "page_url": row["page_url"],
-                "heading": row["heading"],
-                "links": links,
-                "snippet": row["content"][:300],
-            }
-        )
-    return results
+    return [
+        {
+            "page_id": row["page_id"],
+            "title": row["title"],
+            "page_url": row["page_url"],
+            "heading": row["heading"],
+            "links": [row["url"]],
+            "url": row["url"],
+            "anchor_text": row["anchor_text"],
+            "domain": row["domain"],
+            "snippet": row["snippet"],
+        }
+        for row in rows
+    ]
 
 
 def read_network_link(url: str, max_chars: int = 4000) -> dict:

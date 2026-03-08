@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 from typing import Callable
 
-from app.notion.parser import build_chunks, build_page
+from app.notion.parser import build_chunks, build_page, extract_saved_links
 from app.storage.db import init_db, replace_page_chunks, reset_index
 
 
@@ -37,13 +37,14 @@ def rebuild_index_from_raw(
     for raw_file, payload in page_snapshots:
         page_data = payload["page"]
         blocks = payload["blocks"]
-        page = build_page(page_data, raw_json_path=str(raw_file))
+        page = build_page(page_data, raw_json_path=str(raw_file), block_tree=blocks)
         chunks = build_chunks(page, blocks)
-        replace_page_chunks(connection, page, chunks)
+        saved_links = extract_saved_links(page, blocks, chunks)
+        replace_page_chunks(connection, page, chunks, saved_links=saved_links)
         pages_indexed += 1
         chunks_indexed += len(chunks)
         reporter(
-            f"[reindex] {page.title or page.id}: {len(chunks)} chunks from {raw_file.name}"
+            f"[reindex] {page.title or page.id}: {len(chunks)} chunks, {len(saved_links)} links from {raw_file.name}"
         )
 
     return (

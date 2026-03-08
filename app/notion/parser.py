@@ -2,9 +2,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any
+from urllib.parse import urlparse
 
 from app.storage.cleaner import normalize_block_text, should_skip_block
-from app.storage.models import Chunk, Page
+from app.storage.models import Chunk, Page, SavedLink
 
 
 SUPPORTED_RICH_TEXT_TYPES = {
@@ -244,6 +245,57 @@ def extract_links_from_block_tree(block_tree: list[dict[str, Any]]) -> list[str]
     return links
 
 
+def extract_saved_links(
+    page: Page,
+    block_tree: list[dict[str, Any]],
+    chunks: list[Chunk] | None = None,
+) -> list[SavedLink]:
+    chunk_by_heading = build_chunk_lookup(chunks or [])
+    heading_stack = {"heading_1": "", "heading_2": "", "heading_3": ""}
+    saved_links: list[SavedLink] = []
+    seen: set[tuple[str, str, str]] = set()
+
+    for block in flatten_blocks(block_tree):
+        block_type = block.get("type", "")
+        text = extract_block_text(block)
+        if block_type in HEADING_TYPES:
+            update_heading_stack(heading_stack, block_type, text)
+            continue
+
+        heading_path = build_heading_path(heading_stack)
+        rich_text = []
+        if block_type in SUPPORTED_RICH_TEXT_TYPES:
+            payload = block.get(block_type, {})
+            rich_text = payload.get("rich_text", [])
+        if not rich_text:
+            continue
+
+        chunk_id = chunk_by_heading.get(heading_path)
+        context_snippet = text[:280]
+        for part in rich_text:
+            href = extract_rich_text_href(part)
+            if not href:
+                continue
+            anchor_text = part.get("plain_text", "").strip()
+            link_key = (heading_path, anchor_text, href)
+            if link_key in seen:
+                continue
+            seen.add(link_key)
+            saved_links.append(
+                SavedLink(
+                    page_id=page.id,
+                    chunk_id=chunk_id,
+                    page_title=page.title,
+                    heading=heading_path,
+                    url=href,
+                    anchor_text=anchor_text,
+                    domain=extract_domain(href),
+                    context_snippet=context_snippet,
+                )
+            )
+    return saved_links
+
+
 def extract_links_from_rich_text_for_block(block: dict[str, Any]) -> list[str]:
     block_type = block.get("type", "")
     if block_type not in SUPPORTED_RICH_TEXT_TYPES:
@@ -259,6 +311,18 @@ def extract_links_from_rich_text_for_block(block: dict[str, Any]) -> list[str]:
 
 def count_links_in_block(block: dict[str, Any]) -> int:
     return len(extract_links_from_rich_text_for_block(block))
+
+
+def build_chunk_lookup(chunks: list[Chunk]) -> dict[str, str]:
+    lookup: dict[str, str] = {}
+    for chunk in chunks:
+        lookup.setdefault(chunk.heading, chunk.chunk_id)
+    return lookup
+
+
+def extract_domain(url: str) -> str:
+    parsed = urlparse(url)
+    return parsed.netloc.lower()
 
 
 def count_child_blocks(block_tree: list[dict[str, Any]]) -> int:

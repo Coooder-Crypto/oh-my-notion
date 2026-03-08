@@ -12,7 +12,7 @@ from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
 from app.core.config import Settings
-from app.notion.parser import build_chunks, build_page
+from app.notion.parser import build_chunks, build_page, extract_saved_links
 from app.storage.db import get_page_sync_state, init_db, replace_page_chunks
 
 
@@ -262,7 +262,8 @@ def sync_page_tree(
         )
         page = build_page(page_data, raw_json_path=str(raw_json_path), block_tree=block_tree)
         chunks = build_chunks(page, block_tree)
-        replace_page_chunks(connection, page, chunks)
+        saved_links = extract_saved_links(page, block_tree, chunks)
+        replace_page_chunks(connection, page, chunks, saved_links=saved_links)
         stats.pages_indexed += 1
         stats.chunks_indexed += len(chunks)
         stats.raw_files_written += 1

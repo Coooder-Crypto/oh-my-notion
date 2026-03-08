@@ -40,3 +40,15 @@ class SearchResult:
     vector_score: float = 0.0
     rerank_score: float = 0.0
     retrieval_method: str = "fts"
+
+
+@dataclass(slots=True)
+class SavedLink:
+    page_id: str
+    chunk_id: str | None
+    page_title: str
+    heading: str
+    url: str
+    anchor_text: str
+    domain: str
+    context_snippet: str

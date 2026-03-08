@@ -5,7 +5,7 @@ import sqlite3
 
 from app.retrieval.embeddings import embed_text_local
 from app.retrieval.hybrid import encode_vector
-from app.storage.models import Chunk, Page
+from app.storage.models import Chunk, Page, SavedLink
 
 
 SCHEMA_STATEMENTS = (
@@ -74,6 +74,21 @@ SCHEMA_STATEMENTS = (
         FOREIGN KEY(page_id) REFERENCES pages(id)
     )
     """,
+    """
+    CREATE TABLE IF NOT EXISTS saved_links (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        page_id TEXT NOT NULL,
+        chunk_id TEXT,
+        page_title TEXT NOT NULL,
+        heading TEXT NOT NULL,
+        url TEXT NOT NULL,
+        anchor_text TEXT NOT NULL,
+        domain TEXT NOT NULL,
+        context_snippet TEXT NOT NULL,
+        FOREIGN KEY(page_id) REFERENCES pages(id),
+        FOREIGN KEY(chunk_id) REFERENCES chunks(chunk_id)
+    )
+    """,
 )
 
 
@@ -134,11 +149,17 @@ def upsert_page(connection: sqlite3.Connection, page: Page) -> None:
     connection.commit()
 
 
-def replace_page_chunks(connection: sqlite3.Connection, page: Page, chunks: list[Chunk]) -> None:
+def replace_page_chunks(
+    connection: sqlite3.Connection,
+    page: Page,
+    chunks: list[Chunk],
+    saved_links: list[SavedLink] | None = None,
+) -> None:
     upsert_page(connection, page)
     connection.execute("DELETE FROM chunks WHERE page_id = ?", (page.id,))
     connection.execute("DELETE FROM chunks_fts WHERE page_id = ?", (page.id,))
     connection.execute("DELETE FROM chunk_embeddings WHERE page_id = ?", (page.id,))
+    connection.execute("DELETE FROM saved_links WHERE page_id = ?", (page.id,))
 
     for chunk in chunks:
         connection.execute(
@@ -184,6 +205,33 @@ def replace_page_chunks(connection: sqlite3.Connection, page: Page, chunks: list
             ),
         )
 
+    for link in saved_links or []:
+        connection.execute(
+            """
+            INSERT INTO saved_links (
+                page_id,
+                chunk_id,
+                page_title,
+                heading,
+                url,
+                anchor_text,
+                domain,
+                context_snippet
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                link.page_id,
+                link.chunk_id,
+                link.page_title,
+                link.heading,
+                link.url,
+                link.anchor_text,
+                link.domain,
+                link.context_snippet,
+            ),
+        )
+
     connection.commit()
 
 
@@ -200,6 +248,7 @@ def get_page_sync_state(connection: sqlite3.Connection, page_id: str) -> sqlite3
 
 
 def reset_index(connection: sqlite3.Connection) -> None:
+    connection.execute("DELETE FROM saved_links")
     connection.execute("DELETE FROM chunks")
     connection.execute("DELETE FROM chunks_fts")
     connection.execute("DELETE FROM chunk_embeddings")
@@ -257,6 +306,9 @@ def get_stats(connection: sqlite3.Connection) -> dict[str, int]:
     embeddings_count = connection.execute(
         "SELECT COUNT(*) AS count FROM chunk_embeddings"
     ).fetchone()["count"]
+    saved_links_count = connection.execute(
+        "SELECT COUNT(*) AS count FROM saved_links"
+    ).fetchone()["count"]
     empty_pages = connection.execute(
         "SELECT COUNT(*) AS count FROM pages WHERE page_kind = 'empty'"
     ).fetchone()["count"]
@@ -279,6 +331,7 @@ def get_stats(connection: sqlite3.Connection) -> dict[str, int]:
         "pages": pages_count,
         "chunks": chunks_count,
         "embeddings": embeddings_count,
+        "saved_links": saved_links_count,
         "empty_pages": empty_pages,
         "container_pages": container_pages,
         "content_pages": content_pages,

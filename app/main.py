@@ -87,7 +87,7 @@ def ingest_sample_command() -> None:
             token_count=29,
         ),
     ]
-    replace_page_chunks(connection, page, chunks)
+    replace_page_chunks(connection, page, chunks, saved_links=[])
     typer.echo("Sample page indexed.")
 
 
