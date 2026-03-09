@@ -4,12 +4,14 @@ import json
 from pathlib import Path
 from typing import Callable
 
+from app.ingestion.files import ingest_local_files
 from app.notion.parser import build_chunks, build_page, extract_saved_links
 from app.storage.db import init_db, replace_page_chunks, reset_index
 
 
 def rebuild_index_from_raw(
     raw_dir: Path,
+    knowledge_dir: Path,
     connection,
     progress: Callable[[str], None] | None = None,
     target: str | None = None,
@@ -26,9 +28,6 @@ def rebuild_index_from_raw(
         if not payload or "page" not in payload or "blocks" not in payload:
             continue
         page_snapshots.append((raw_file, payload))
-
-    if not page_snapshots:
-        return f"No page snapshots found in {raw_dir}"
 
     reset_index(connection)
 
@@ -47,9 +46,20 @@ def rebuild_index_from_raw(
             f"[reindex] {page.title or page.id}: {len(chunks)} chunks, {len(saved_links)} links from {raw_file.name}"
         )
 
+    file_report = ingest_local_files(
+        knowledge_dir,
+        connection,
+        progress=reporter,
+        target=target,
+        cleanup_stale=False,
+    )
+
+    if not page_snapshots:
+        return f"No page snapshots found in {raw_dir}. {file_report}"
+
     return (
         f"Reindex completed. Indexed {pages_indexed} pages and {chunks_indexed} chunks "
-        f"from {len(page_snapshots)} raw snapshots."
+        f"from {len(page_snapshots)} raw snapshots. {file_report}"
     )
 
 

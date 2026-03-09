@@ -9,6 +9,7 @@ from app.agent import answer_question
 from app.core.config import load_settings
 from app.evaluation.agent import evaluate_agent_routing
 from app.evaluation.retrieval import evaluate_retrieval
+from app.ingestion.files import ingest_local_files
 from app.inspection.inspectors import (
     inspect_chunks_snapshot,
     inspect_links_snapshot,
@@ -40,6 +41,7 @@ def init_db_command() -> None:
     settings = load_settings()
     settings.raw_dir.mkdir(parents=True, exist_ok=True)
     settings.db_dir.mkdir(parents=True, exist_ok=True)
+    settings.knowledge_dir.mkdir(parents=True, exist_ok=True)
     connection = connect(settings.db_path)
     init_db(connection)
     typer.echo(f"Database initialized at {settings.db_path}")
@@ -159,7 +161,30 @@ def reindex_command(target: str | None = None) -> None:
     connection = connect(settings.db_path)
     init_db(connection)
     typer.echo(
-        rebuild_index_from_raw(settings.raw_dir, connection, progress=typer.echo, target=target)
+        rebuild_index_from_raw(
+            settings.raw_dir,
+            settings.knowledge_dir,
+            connection,
+            progress=typer.echo,
+            target=target,
+        )
+    )
+
+
+@app.command("ingest-files")
+def ingest_files_command(target: str | None = None) -> None:
+    settings = load_settings()
+    settings.knowledge_dir.mkdir(parents=True, exist_ok=True)
+    connection = connect(settings.db_path)
+    init_db(connection)
+    typer.echo(
+        ingest_local_files(
+            settings.knowledge_dir,
+            connection,
+            progress=typer.echo,
+            target=target,
+            cleanup_stale=True,
+        )
     )
 
 
@@ -198,7 +223,15 @@ def stats_command() -> None:
     init_db(connection)
     stats = get_stats(connection)
     raw_files = len(list(settings.raw_dir.glob("*.json")))
+    local_files = len(
+        [
+            path
+            for path in settings.knowledge_dir.rglob("*")
+            if path.is_file() and path.suffix.lower() in {".md", ".txt"}
+        ]
+    )
     typer.echo(f"raw_snapshots: {raw_files}")
+    typer.echo(f"local_files: {local_files}")
     for key, value in stats.items():
         typer.echo(f"{key}: {value}")
 

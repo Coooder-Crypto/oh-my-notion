@@ -286,6 +286,28 @@ def reset_index(connection: sqlite3.Connection) -> None:
     connection.commit()
 
 
+def delete_page(connection: sqlite3.Connection, page_id: str) -> None:
+    connection.execute("DELETE FROM saved_links WHERE page_id = ?", (page_id,))
+    connection.execute("DELETE FROM chunk_embeddings WHERE page_id = ?", (page_id,))
+    connection.execute("DELETE FROM chunks_fts WHERE page_id = ?", (page_id,))
+    connection.execute("DELETE FROM chunks WHERE page_id = ?", (page_id,))
+    connection.execute("DELETE FROM pages WHERE id = ?", (page_id,))
+    connection.commit()
+
+
+def list_file_source_pages(connection: sqlite3.Connection, root_dir: str) -> list[sqlite3.Row]:
+    cursor = connection.execute(
+        """
+        SELECT id, raw_json_path
+        FROM pages
+        WHERE source_type LIKE 'file_%'
+          AND raw_json_path LIKE ?
+        """,
+        (f"{root_dir}%",),
+    )
+    return cursor.fetchall()
+
+
 def ensure_pages_columns(connection: sqlite3.Connection) -> None:
     existing_columns = set()
     for row in connection.execute("PRAGMA table_info(pages)").fetchall():

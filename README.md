@@ -13,8 +13,9 @@ It is designed as a learning project for agent development:
 - Local SQLite storage
 - SQLite FTS5 full-text search
 - Local embedding index for semantic retrieval
+- Local file ingestion for `.md` and `.txt`
 - Local-first agent flow
-- CLI entrypoint for `init-db`, `ingest-sample`, `search`, `ask`, `sync`, `reindex`, and `serve`
+- CLI entrypoint for `init-db`, `ingest-sample`, `ingest-files`, `search`, `ask`, `sync`, `reindex`, and `serve`
 - Real Notion sync for pages, child pages, and database entries
 - Lightweight web frontend served by Python
 - Optional OpenAI API integration for grounded answer generation
@@ -29,6 +30,7 @@ source .venv/bin/activate
 pip install -e .
 oh-my-notion init-db
 oh-my-notion ingest-sample
+oh-my-notion ingest-files
 oh-my-notion search "agent"
 oh-my-notion ask "我之前写过哪些和 agent routing 有关的内容？"
 ```
@@ -75,6 +77,7 @@ OPENAI_MODEL=gpt-4.1-mini
 Supported keys:
 
 - `OH_MY_NOTION_DB_PATH`: optional path to SQLite database
+- `OH_MY_NOTION_KNOWLEDGE_DIR`: optional path to the local files directory, defaults to `knowledge_files/`
 - `NOTION_TOKEN`: your Notion integration token
 - `NOTION_ROOT_PAGE_ID`: root page ID to start recursive sync
 - `NOTION_VERSION`: optional Notion API version, defaults to `2022-06-28`
@@ -101,13 +104,31 @@ oh-my-notion reindex
 ```
 
 This rebuilds the local SQLite index from `data/raw/*.json`.
-It also regenerates chunk embeddings for hybrid retrieval.
+It also regenerates chunk embeddings for hybrid retrieval and rebuilds local files from `knowledge_files/`.
 
 You can also rebuild only matching raw files:
 
 ```bash
 oh-my-notion reindex notes
 ```
+
+## Local Files As A Second Source
+
+Put local `.md` or `.txt` files under:
+
+```text
+knowledge_files/
+```
+
+Then ingest them into the same local index:
+
+```bash
+oh-my-notion ingest-files
+oh-my-notion search "agent"
+oh-my-notion ask "我在本地文件和 Notion 里关于 agent 写了什么？"
+```
+
+The file source shares the same chunks, embeddings, hybrid retrieval, and agent pipeline as Notion pages.
 
 ## Local Analysis Commands
 
