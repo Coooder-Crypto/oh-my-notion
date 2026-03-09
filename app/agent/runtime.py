@@ -11,9 +11,10 @@ from app.agent.memory import (
     maybe_capture_memory_from_turn,
     save_session_turn,
 )
-from app.agent.planner import plan_tool_calls
+from app.agent.planner import plan_skill_calls
 from app.agent.rendering import build_template_answer
 from app.agent.tools_registry import ToolDefinition, build_tool_registry
+from app.skills import build_skill_registry, build_tool_calls_from_skills
 from app.core.config import Settings
 from app.llm import generate_answer_from_context
 from app.storage.models import SearchResult
@@ -29,25 +30,51 @@ def run_agent(
     session_id: str = "default",
 ) -> str:
     registry = build_tool_registry(connection, session_id=session_id)
+    skill_registry = build_skill_registry()
     observations: list[ToolObservation] = []
     planner_trace: list[dict] = []
     session_history = serialize_session_turns(get_session_turns(connection, session_id=session_id))
     session_summaries = get_memory_summaries(connection, session_id=session_id, limit=2)
     for step_index in range(MAX_AGENT_STEPS):
-        planned_calls = plan_tool_calls(
+        planned_skills = plan_skill_calls(
             question,
             top_k=top_k,
             settings=settings,
-            tool_descriptions=serialize_tool_descriptions(registry),
             observations=serialize_observations(observations),
             session_history=session_history,
         )
+        planned_calls = build_tool_calls_from_skills(
+            skill_registry,
+            planned_skills,
+            question=question,
+            top_k=top_k,
+            observations=serialize_observations(observations),
+        )
         if not planned_calls:
-            planner_trace.append({"step": step_index + 1, "thought": "No further tool call is needed.", "actions": [], "observation": "stop"})
+            planner_trace.append(
+                {
+                    "step": step_index + 1,
+                    "thought": "No further skill or tool call is needed.",
+                    "skills": [],
+                    "actions": [],
+                    "observation": "stop",
+                }
+            )
             break
         planned_calls = remove_duplicate_calls(planned_calls, observations)
         if not planned_calls:
-            planner_trace.append({"step": step_index + 1, "thought": "Planned calls were duplicates, stopping.", "actions": [], "observation": "duplicate_stop"})
+            planner_trace.append(
+                {
+                    "step": step_index + 1,
+                    "thought": "Planned calls were duplicates, stopping.",
+                    "skills": [
+                        {"skill_name": item.skill_name, "arguments": item.arguments}
+                        for item in planned_skills
+                    ],
+                    "actions": [],
+                    "observation": "duplicate_stop",
+                }
+            )
             break
         step_observations = execute_tool_calls(registry, planned_calls)
         observations.extend(step_observations)
@@ -55,8 +82,12 @@ def run_agent(
             {
                 "step": step_index + 1,
                 "thought": " ; ".join(call.reason for call in planned_calls),
+                "skills": [
+                    {"skill_name": item.skill_name, "arguments": item.arguments}
+                    for item in planned_skills
+                ],
                 "actions": [
-                    {"tool_name": call.tool_name, "arguments": call.arguments}
+                    {"tool_name": call.tool_name, "arguments": call.arguments, "skill_name": call.skill_name}
                     for call in planned_calls
                 ],
                 "observation": " | ".join(
@@ -64,7 +95,7 @@ def run_agent(
                 ),
             }
         )
-        if should_stop_after_observation(step_observations):
+        if should_stop_after_observation(step_observations, planned_skills):
             break
 
     search_results = extract_search_results(observations)
@@ -378,15 +409,22 @@ def stable_arguments(arguments: dict) -> str:
         return str(arguments)
 
 
-def should_stop_after_observation(observations: list[ToolObservation]) -> bool:
+def should_stop_after_observation(observations: list[ToolObservation], planned_skills: list[dict] | list | None = None) -> bool:
     if not observations:
         return True
+    follow_up_link_read = any(
+        getattr(skill, "skill_name", None) == "link_research_skill"
+        and bool(getattr(skill, "arguments", {}).get("follow_up_read"))
+        for skill in (planned_skills or [])
+    )
     for observation in observations:
         if observation.tool_name == "read_network_link" and isinstance(observation.result, dict):
             return True
         if observation.tool_name == "search_local_notion" and isinstance(observation.result, list) and observation.result:
             return True
-        if observation.tool_name in {"lookup_memory", "search_saved_links", "list_top_link_domains", "find_pages_by_domain"} and isinstance(observation.result, list) and observation.result:
+        if observation.tool_name == "search_saved_links" and isinstance(observation.result, list) and observation.result:
+            return not follow_up_link_read
+        if observation.tool_name in {"lookup_memory", "list_top_link_domains", "find_pages_by_domain"} and isinstance(observation.result, list) and observation.result:
             return True
         if observation.tool_name == "get_link_domain_summary" and isinstance(observation.result, dict) and not observation.result.get("error"):
             return True
@@ -434,8 +472,17 @@ def render_planner_trace(planner_trace: list[dict]) -> list[str]:
     lines: list[str] = []
     for item in planner_trace:
         lines.append(f"- step {item.get('step')}: {item.get('thought', '')}")
+        skills = item.get("skills", [])
+        for skill in skills:
+            lines.append(f"  skill: {skill.get('skill_name')} {skill.get('arguments')}")
         actions = item.get("actions", [])
         for action in actions:
-            lines.append(f"  action: {action.get('tool_name')} {action.get('arguments')}")
+            skill_name = action.get("skill_name", "")
+            if skill_name:
+                lines.append(
+                    f"  action: {action.get('tool_name')} {action.get('arguments')} [skill={skill_name}]"
+                )
+            else:
+                lines.append(f"  action: {action.get('tool_name')} {action.get('arguments')}")
         lines.append(f"  observation: {item.get('observation', '')}")
     return lines

@@ -4,7 +4,7 @@ from dataclasses import dataclass
 import inspect
 from typing import Any
 
-from app.agent.planner import PlannedToolCall
+from app.agent.models import PlannedToolCall
 from app.agent.tools_registry import ToolDefinition
 
 
