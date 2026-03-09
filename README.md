@@ -22,6 +22,196 @@ It is designed as a learning project for agent development:
 - Local inspection commands for raw snapshots, parsed pages, chunks, links, and stats
 - Local eval commands for retrieval and agent tool routing
 
+## Architecture
+
+The project now uses a `source -> tool -> skill -> planner -> runtime -> context -> answer` architecture.
+
+### 1. Sources
+
+The agent reads from multiple local knowledge sources:
+
+- Notion snapshots in `data/raw/*.json`
+- Local files in `knowledge_files/`
+- SQLite memory tables for session memory, facts, preferences, and summaries
+- Structured link records extracted from Notion pages and local files
+
+Main code:
+
+- `app/notion/sync.py`
+- `app/notion/parser.py`
+- `app/ingestion/files.py`
+- `app/storage/db.py`
+
+### 2. Data / Index Layer
+
+All sources are normalized into the same local storage model:
+
+- `pages`
+- `chunks`
+- `chunk_embeddings`
+- `saved_links`
+- `session_turns`
+- `memory_facts`
+- `memory_preferences`
+- `memory_summaries`
+
+This keeps Notion pages and local files inside the same retrieval plane.
+
+Main code:
+
+- `app/storage/models.py`
+- `app/storage/db.py`
+- `app/storage/reindex.py`
+
+### 3. Tools
+
+Tools are the smallest executable capabilities. They do not decide the full task flow; they only fetch or update data.
+
+Current tools include:
+
+- `search_local_notion`
+- `list_recent_pages`
+- `get_page`
+- `search_saved_links`
+- `list_top_link_domains`
+- `find_pages_by_domain`
+- `get_link_domain_summary`
+- `read_network_link`
+- `lookup_memory`
+- `lookup_preferences`
+- `save_memory`
+- `save_preference`
+
+Main code:
+
+- `app/retrieval/tools.py`
+- `app/agent/memory.py`
+- `app/agent/tools_registry.py`
+
+### 4. Skills
+
+Skills are task-oriented orchestration units built on top of tools. A skill may call one or more tools and may decide whether a follow-up step is needed.
+
+Current skills:
+
+- `local_qa_skill`
+- `multi_source_research_skill`
+- `link_research_skill`
+- `memory_skill`
+- `recent_activity_skill`
+- `generic_research_skill`
+
+Main code:
+
+- `app/skills/registry.py`
+
+### 5. Planner
+
+The planner is now skill-first.
+
+It decides:
+
+- which skill should handle the question
+- which arguments should be passed to the skill
+- whether the next step should stop or continue based on observations
+
+There are two planner modes:
+
+- LLM-driven skill planning when OpenAI is available
+- rule-based skill routing as fallback
+
+Main code:
+
+- `app/agent/planner.py`
+
+### 6. Runtime
+
+The runtime executes a `thought -> skill -> tool -> observation` loop with:
+
+- step limits
+- duplicate-call prevention
+- follow-up tool execution
+- planner trace recording
+- session persistence
+- automatic memory capture
+
+Main code:
+
+- `app/agent/runtime.py`
+- `app/agent/executor.py`
+
+### 7. Context Builder
+
+The context builder turns retrieved evidence, memory, network results, and planner trace into a bounded final context for the LLM.
+
+It handles:
+
+- layered token budgets
+- retrieval / memory / network / trace allocation
+- dynamic trimming
+- citation ids
+- explanation output
+
+Main code:
+
+- `app/context/builder.py`
+- `app/context/models.py`
+
+### 8. Answer Layer
+
+The final answer layer has two modes:
+
+- OpenAI grounded generation using the built context
+- local evidence-first fallback when OpenAI is unavailable
+
+Main code:
+
+- `app/llm.py`
+- `app/agent/rendering.py`
+- `app/agent/service.py`
+
+### 9. Eval / Inspection
+
+The project includes built-in tooling for:
+
+- retrieval evaluation
+- agent routing evaluation
+- local snapshot inspection
+- dashboard analysis
+
+Main code:
+
+- `app/evaluation/`
+- `app/inspection/`
+- `app/webapp/server.py`
+
+## Ask Flow
+
+A normal `ask` request runs roughly like this:
+
+1. The planner selects a skill.
+2. The skill expands into one or more tool calls.
+3. Tools return observations from local knowledge, links, memory, or network content.
+4. The runtime decides whether to stop or continue another step.
+5. The context builder assembles the final evidence bundle.
+6. The answer layer returns either:
+   - an OpenAI grounded answer
+   - or a local fallback answer
+7. The session is persisted and memory may be updated.
+
+In short:
+
+```text
+Question
+-> Planner
+-> Skill
+-> Tool Calls
+-> Observations
+-> Context Builder
+-> Answer
+-> Memory Update / Eval
+```
+
 ## Quick Start
 
 ```bash
